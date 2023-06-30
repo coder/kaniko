@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -39,15 +39,19 @@ import (
 func ParseStages(opts *config.KanikoOptions) ([]instructions.Stage, []instructions.ArgCommand, error) {
 	var err error
 	var d []uint8
-	match, _ := regexp.MatchString("^https?://", opts.DockerfilePath)
-	if match {
-		response, e := http.Get(opts.DockerfilePath) //nolint:noctx
-		if e != nil {
-			return nil, nil, e
-		}
-		d, err = io.ReadAll(response.Body)
+	if opts.DockerfileContent != "" {
+		d = []uint8(opts.DockerfileContent)
 	} else {
-		d, err = os.ReadFile(opts.DockerfilePath)
+		match, _ := regexp.MatchString("^https?://", opts.DockerfilePath)
+		if match {
+			response, e := http.Get(opts.DockerfilePath) //nolint:noctx
+			if e != nil {
+				return nil, nil, e
+			}
+			d, err = io.ReadAll(response.Body)
+		} else {
+			d, err = os.ReadFile(opts.DockerfilePath)
+		}
 	}
 
 	if err != nil {
