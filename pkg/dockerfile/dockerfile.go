@@ -39,16 +39,21 @@ import (
 func ParseStages(opts *config.KanikoOptions) ([]instructions.Stage, []instructions.ArgCommand, error) {
 	var err error
 	var d []uint8
-	match, _ := regexp.MatchString("^https?://", opts.DockerfilePath)
-	if match {
-		response, e := http.Get(opts.DockerfilePath) //nolint:noctx
-		if e != nil {
-			return nil, nil, e
-		}
-		d, err = io.ReadAll(response.Body)
+	if opts.DockerfileContent != "" {
+		d = []uint8(opts.DockerfileContent)
 	} else {
-		d, err = os.ReadFile(opts.DockerfilePath)
+		match, _ := regexp.MatchString("^https?://", opts.DockerfilePath)
+		if match {
+			response, e := http.Get(opts.DockerfilePath) //nolint:noctx
+			if e != nil {
+				return nil, nil, e
+			}
+			d, err = io.ReadAll(response.Body)
+		} else {
+			d, err = io.ReadFile(opts.DockerfilePath)
+		}
 	}
+	
 
 	if err != nil {
 		return nil, nil, errors.Wrap(err, fmt.Sprintf("reading dockerfile at path %s", opts.DockerfilePath))
