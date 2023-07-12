@@ -32,28 +32,28 @@ jobs:
 
         include:
         - image: executor
-          dockerfile: ./deploy/Dockerfile
+          target: kaniko-executor
           platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           image-name: gcr.io/kaniko-project/executor
           tag: ${{ github.sha }}
           release-tag: latest
 
         - image: executor-debug
-          dockerfile: ./deploy/Dockerfile_debug
+          target: kaniko-debug
           platforms: linux/amd64,linux/arm64,linux/s390x
           image-name: gcr.io/kaniko-project/executor
           tag: ${{ github.sha }}-debug
           release-tag: debug
 
         - image: executor-slim
-          dockerfile: ./deploy/Dockerfile_slim
+          target: kaniko-slim
           platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           image-name: gcr.io/kaniko-project/executor
           tag: ${{ github.sha }}-slim
           release-tag: slim
 
         - image: warmer
-          dockerfile: ./deploy/Dockerfile_warmer
+          target: kaniko-warmer
           platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           image-name: gcr.io/kaniko-project/warmer
           tag: ${{ github.sha }}
@@ -64,35 +64,48 @@ jobs:
 
     # Setup auth if not a PR.
     - if: github.event_name != 'pull_request'
-      uses: google-github-actions/setup-gcloud@04141d8a7edfc8c679682f23e7bbbe05cbe32bb3 # v0.5.1
+      uses: google-github-actions/auth@35b0e87d162680511bf346c299f71c9c5c379033 # v1.1.1
       with:
-        service_account_key: ${{ secrets.GCR_DEVOPS_SERVICE_ACCOUNT_KEY }}
-        project_id: kaniko-project
-        export_default_credentials: true
+        credentials_json: '${{ secrets.GCR_DEVOPS_SERVICE_ACCOUNT_KEY }}'
+        export_environment_variables: true
+        create_credentials_file: true
+    - if: github.event_name != 'pull_request'
+      uses: google-github-actions/setup-gcloud@e30db14379863a8c79331b04a9969f4c1e225e0b # v1.1.1
     - if: github.event_name != 'pull_request'
       run: gcloud auth configure-docker
 
+    # Don't build for all platforms on PRs.
+    - id: platforms
+      run: |
+        event="${{ github.event_name }}"
+        if [[ "$event" == "pull_request" ]]; then
+          echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+        else
+          platforms="${{ matrix.platforms }}"
+          echo "platforms=${platforms}" >> $GITHUB_OUTPUT
+        fi
     # Build and push with Docker.
-    - uses: docker/setup-qemu-action@27d0a4f181a40b142cce983c5393082c365d1480 # v1
+    - uses: docker/setup-qemu-action@2b82ce82d56a2a04d2637cd93a637ae1b359c0a7 # v2.2.0
       with:
         platforms: ${{ matrix.platforms }}
-    - uses: docker/setup-buildx-action@dc7b9719a96d48369863986a06765841d7ea23f6 # v1
-    - uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5 # v3
+    - uses: docker/setup-buildx-action@16c0bc4a6e6ada2cfd8afd41d22d95379cf7c32a # v1
+    - uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825 # v4.1.1
       id: build-and-push
       with:
         context: .
-        file: ${{ matrix.dockerfile }}
-        platforms: ${{ matrix.platforms }}
+        file: ./deploy/Dockerfile
+        platforms: ${{ steps.platforms.outputs.platforms }}
         push: ${{ github.event_name != 'pull_request' }} # Only push if not a PR.
         tags: ${{ matrix.image-name }}:${{ matrix.tag }}
         no-cache-filters: certs
         # https://github.com/docker/build-push-action/blob/master/docs/advanced/cache.md#github-cache
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        target: ${{ matrix.target }}
 
     # Sign images if not a PR.
     - if: github.event_name != 'pull_request'
-      uses: sigstore/cosign-installer@c3667d99424e7e6047999fb6246c0da843953c65 # v3.0.1
+      uses: sigstore/cosign-installer@6e04d228eb30da1757ee4e1dd75a0ec73a653e06 # v3.1.1
     - if: github.event_name != 'pull_request'
       run: |
         cosign sign --yes \
@@ -103,7 +116,7 @@ jobs:
 
     # If a tag push, use crane to add more tags.
     - if: startsWith(github.ref, 'refs/tags/v')
-      uses: imjasonh/setup-crane@5146f708a817ea23476677995bf2133943b9be0b # v0.1
+      uses: imjasonh/setup-crane@00c9e93efa4e1138c9a7a5c594acd6c75a2fbf0c # v0.3
     - if: startsWith(github.ref, 'refs/tags/v')
       name: Apply release tags
       run: |

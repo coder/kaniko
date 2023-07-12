@@ -31,6 +31,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -197,7 +198,7 @@ func isOCILayout(path string) bool {
 	return strings.HasPrefix(path, "oci:")
 }
 
-func (s *stageBuilder) populateCompositeKey(command fmt.Stringer, files []string, compositeKey CompositeCache, args *dockerfile.BuildArgs, env []string) (CompositeCache, error) {
+func (s *stageBuilder) populateCompositeKey(command commands.DockerCommand, files []string, compositeKey CompositeCache, args *dockerfile.BuildArgs, env []string) (CompositeCache, error) {
 	// First replace all the environment variables or args in the command
 	replacementEnvs := args.ReplacementEnvs(env)
 	// The sort order of `replacementEnvs` is basically undefined, sort it
@@ -211,15 +212,16 @@ func (s *stageBuilder) populateCompositeKey(command fmt.Stringer, files []string
 	// avoid conflicts with any RUN command since commands can not
 	// start with | (vertical bar). The "#" (number of build envs) is there to
 	// help ensure proper cache matches.
-	if len(replacementEnvs) > 0 {
-		compositeKey.AddKey(fmt.Sprintf("|%d", len(replacementEnvs)))
-		compositeKey.AddKey(replacementEnvs...)
+
+	if command.IsArgsEnvsRequiredInCache() {
+		if len(replacementEnvs) > 0 {
+			compositeKey.AddKey(fmt.Sprintf("|%d", len(replacementEnvs)))
+			compositeKey.AddKey(replacementEnvs...)
+		}
 	}
+
 	// Add the next command to the cache key.
 	compositeKey.AddKey(resolvedCmd)
-	if copyCmd, ok := commands.CastAbstractCopyCommand(command); ok == true {
-		compositeKey = s.populateCopyCmdCompositeKey(command, copyCmd.From(), compositeKey)
-	}
 
 	for _, f := range files {
 		if err := compositeKey.AddPath(f, s.fileContext); err != nil {
@@ -227,22 +229,6 @@ func (s *stageBuilder) populateCompositeKey(command fmt.Stringer, files []string
 		}
 	}
 	return compositeKey, nil
-}
-
-func (s *stageBuilder) populateCopyCmdCompositeKey(command fmt.Stringer, from string, compositeKey CompositeCache) CompositeCache {
-	if from != "" {
-		digest, ok := s.stageIdxToDigest[from]
-		if ok {
-			ds := digest
-			cacheKey, ok := s.digestToCacheKey[ds]
-			if ok {
-				logrus.Debugf("Adding digest %v from previous stage to composite key for %v", ds, command.String())
-				compositeKey.AddKey(cacheKey)
-			}
-		}
-	}
-
-	return compositeKey
 }
 
 func (s *stageBuilder) optimize(compositeKey CompositeCache, cfg v1.Config) error {
@@ -518,12 +504,25 @@ func (s *stageBuilder) saveSnapshotToLayer(tarPath string) (v1.Layer, error) {
 		return nil, nil
 	}
 
-	var layer v1.Layer
+	var layerOpts []tarball.LayerOption
+
 	if s.opts.CompressedCaching == true {
-		layer, err = tarball.LayerFromFile(tarPath, tarball.WithCompressedCaching)
-	} else {
-		layer, err = tarball.LayerFromFile(tarPath)
+		layerOpts = append(layerOpts, tarball.WithCompressedCaching)
 	}
+
+	if s.opts.CompressionLevel > 0 {
+		layerOpts = append(layerOpts, tarball.WithCompressionLevel(s.opts.CompressionLevel))
+	}
+
+	switch s.opts.Compression {
+	case config.ZStd:
+		layerOpts = append(layerOpts, tarball.WithCompression("zstd"), tarball.WithMediaType(types.OCILayerZStd))
+
+	case config.GZip:
+		// layer already gzipped by default
+	}
+
+	layer, err := tarball.LayerFromFile(tarPath, layerOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -772,15 +771,51 @@ func filesToSave(deps []string) ([]string, error) {
 		}
 	}
 	// remove duplicates
+	deduped := deduplicatePaths(srcFiles)
+
+	return deduped, nil
+}
+
+// deduplicatePaths returns a deduplicated slice of shortest paths
+// For example {"usr/lib", "usr/lib/ssl"} will return only {"usr/lib"}
+func deduplicatePaths(paths []string) []string {
+	type node struct {
+		children map[string]*node
+		value    bool
+	}
+
+	root := &node{children: make(map[string]*node)}
+
+	// Create a tree marking all present paths
+	for _, f := range paths {
+		parts := strings.Split(f, "/")
+		current := root
+		for i := 0; i < len(parts)-1; i++ {
+			part := parts[i]
+			if _, ok := current.children[part]; !ok {
+				current.children[part] = &node{children: make(map[string]*node)}
+			}
+			current = current.children[part]
+		}
+		current.children[parts[len(parts)-1]] = &node{children: make(map[string]*node), value: true}
+	}
+
+	// Collect all paths
 	deduped := []string{}
-	m := map[string]struct{}{}
-	for _, f := range srcFiles {
-		if _, ok := m[f]; !ok {
-			deduped = append(deduped, f)
-			m[f] = struct{}{}
+	var traverse func(*node, string)
+	traverse = func(n *node, path string) {
+		if n.value {
+			deduped = append(deduped, strings.TrimPrefix(path, "/"))
+			return
+		}
+		for k, v := range n.children {
+			traverse(v, path+"/"+k)
 		}
 	}
-	return deduped, nil
+
+	traverse(root, "")
+
+	return deduped
 }
 
 func fetchExtraStages(stages []config.KanikoStage, opts *config.KanikoOptions) error {

@@ -62,7 +62,7 @@ func init() {
 	RootCmd.PersistentFlags().MarkDeprecated("whitelist-var-run", "Please use ignore-var-run instead.")
 }
 
-func valdiateFlags() {
+func validateFlags() {
 	checkNoDeprecatedFlags()
 
 	// Allow setting --registry-mirror using an environment variable.
@@ -85,7 +85,7 @@ var RootCmd = &cobra.Command{
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.Use == "executor" {
 
-			valdiateFlags()
+			validateFlags()
 
 			// Command line flag takes precedence over the KANIKO_DIR environment variable.
 			dir := config.KanikoDir
@@ -225,14 +225,18 @@ func addKanikoOptionsFlags() {
 	RootCmd.PersistentFlags().StringVarP(&opts.ImageNameDigestFile, "image-name-with-digest-file", "", "", "Specify a file to save the image name w/ digest of the built image to.")
 	RootCmd.PersistentFlags().StringVarP(&opts.ImageNameTagDigestFile, "image-name-tag-with-digest-file", "", "", "Specify a file to save the image name w/ image tag w/ digest of the built image to.")
 	RootCmd.PersistentFlags().StringVarP(&opts.OCILayoutPath, "oci-layout-path", "", "", "Path to save the OCI image layout of the built image.")
+	RootCmd.PersistentFlags().VarP(&opts.Compression, "compression", "", "Compression algorithm (gzip, zstd)")
+	RootCmd.PersistentFlags().IntVarP(&opts.CompressionLevel, "compression-level", "", -1, "Compression level")
 	RootCmd.PersistentFlags().BoolVarP(&opts.Cache, "cache", "", false, "Use cache when building image")
 	RootCmd.PersistentFlags().BoolVarP(&opts.CompressedCaching, "compressed-caching", "", true, "Compress the cached layers. Decreases build time, but increases memory usage.")
 	RootCmd.PersistentFlags().BoolVarP(&opts.Cleanup, "cleanup", "", false, "Clean the filesystem at the end")
-	RootCmd.PersistentFlags().DurationVarP(&opts.CacheTTL, "cache-ttl", "", time.Hour*336, "Cache timeout in hours. Defaults to two weeks.")
+	RootCmd.PersistentFlags().DurationVarP(&opts.CacheTTL, "cache-ttl", "", time.Hour*336, "Cache timeout, requires value and unit of duration -> ex: 6h. Defaults to two weeks.")
 	RootCmd.PersistentFlags().VarP(&opts.InsecureRegistries, "insecure-registry", "", "Insecure registry using plain HTTP to push and pull. Set it repeatedly for multiple registries.")
 	RootCmd.PersistentFlags().VarP(&opts.SkipTLSVerifyRegistries, "skip-tls-verify-registry", "", "Insecure registry ignoring TLS verify to push and pull. Set it repeatedly for multiple registries.")
 	opts.RegistriesCertificates = make(map[string]string)
 	RootCmd.PersistentFlags().VarP(&opts.RegistriesCertificates, "registry-certificate", "", "Use the provided certificate for TLS communication with the given registry. Expected format is 'my.registry.url=/path/to/the/server/certificate'.")
+	opts.RegistriesClientCertificates = make(map[string]string)
+	RootCmd.PersistentFlags().VarP(&opts.RegistriesClientCertificates, "registry-client-cert", "", "Use the provided client certificate for mutual TLS (mTLS) communication with the given registry. Expected format is 'my.registry.url=/path/to/client/cert,/path/to/client/key'.")
 	RootCmd.PersistentFlags().VarP(&opts.RegistryMirrors, "registry-mirror", "", "Registry mirror to use as pull-through cache instead of docker.io. Set it repeatedly for multiple mirrors.")
 	RootCmd.PersistentFlags().BoolVarP(&opts.IgnoreVarRun, "ignore-var-run", "", true, "Ignore /var/run directory when taking image snapshot. Set it to false to preserve /var/run/ in destination image.")
 	RootCmd.PersistentFlags().VarP(&opts.Labels, "label", "", "Set metadata for an image. Set it repeatedly for multiple labels.")

@@ -41,6 +41,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
@@ -109,7 +110,11 @@ func CheckPushPermissions(opts *config.KanikoOptions) error {
 			}
 			destRef.Repository.Registry = newReg
 		}
-		tr := newRetry(util.MakeTransport(opts.RegistryOptions, registryName))
+		rt, err := util.MakeTransport(opts.RegistryOptions, registryName)
+		if err != nil {
+			return errors.Wrapf(err, "making transport for registry %q", registryName)
+		}
+		tr := newRetry(rt)
 		if err := checkRemotePushPermission(destRef, creds.GetKeychain(), tr); err != nil {
 			return errors.Wrapf(err, "checking push permission for %q", destRef)
 		}
@@ -237,7 +242,11 @@ func DoPush(image v1.Image, opts *config.KanikoOptions) error {
 			return errors.Wrap(err, "resolving pushAuth")
 		}
 
-		tr := newRetry(util.MakeTransport(opts.RegistryOptions, registryName))
+		localRt, err := util.MakeTransport(opts.RegistryOptions, registryName)
+		if err != nil {
+			return errors.Wrapf(err, "making transport for registry %q", registryName)
+		}
+		tr := newRetry(localRt)
 		rt := &withUserAgent{t: tr}
 
 		logrus.Infof("Pushing image to %s", destRef.String())
@@ -296,16 +305,28 @@ func writeImageOutputs(image v1.Image, destRefs []name.Tag) error {
 // pushLayerToCache pushes layer (tagged with cacheKey) to opts.CacheRepo
 // if opts.CacheRepo doesn't exist, infer the cache from the given destination
 func pushLayerToCache(opts *config.KanikoOptions, cacheKey string, tarPath string, createdBy string) error {
-	var layer v1.Layer
-	var err error
+	var layerOpts []tarball.LayerOption
 	if opts.CompressedCaching == true {
-		layer, err = tarball.LayerFromFile(tarPath, tarball.WithCompressedCaching)
-	} else {
-		layer, err = tarball.LayerFromFile(tarPath)
+		layerOpts = append(layerOpts, tarball.WithCompressedCaching)
 	}
+
+	if opts.CompressionLevel > 0 {
+		layerOpts = append(layerOpts, tarball.WithCompressionLevel(opts.CompressionLevel))
+	}
+
+	switch opts.Compression {
+	case config.ZStd:
+		layerOpts = append(layerOpts, tarball.WithCompression("zstd"), tarball.WithMediaType(types.OCILayerZStd))
+
+	case config.GZip:
+		// layer already gzipped by default
+	}
+
+	layer, err := tarball.LayerFromFile(tarPath, layerOpts...)
 	if err != nil {
 		return err
 	}
+
 	cache, err := cache.Destination(opts, cacheKey)
 	if err != nil {
 		return errors.Wrap(err, "getting cache destination")
