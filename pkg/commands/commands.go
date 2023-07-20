@@ -64,13 +64,13 @@ type DockerCommand interface {
 	IsArgsEnvsRequiredInCache() bool
 }
 
-func GetCommand(cmd instructions.Command, fileContext util.FileContext, useNewRun bool, cacheCopy bool, cacheRun bool) (DockerCommand, error) {
+func GetCommand(cmd instructions.Command, fileContext util.FileContext, useNewRun bool, cacheCopy bool, cacheRun bool, output *RunOutput) (DockerCommand, error) {
 	switch c := cmd.(type) {
 	case *instructions.RunCommand:
 		if useNewRun {
-			return &RunMarkerCommand{cmd: c, shdCache: cacheRun}, nil
+			return &RunMarkerCommand{cmd: c, shdCache: cacheRun, output: output}, nil
 		}
-		return &RunCommand{cmd: c, shdCache: cacheRun}, nil
+		return &RunCommand{cmd: c, shdCache: cacheRun, output: output}, nil
 	case *instructions.CopyCommand:
 		return &CopyCommand{cmd: c, fileContext: fileContext, shdCache: cacheCopy}, nil
 	case *instructions.ExposeCommand:
