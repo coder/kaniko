@@ -848,7 +848,7 @@ func Test_stageBuilder_populateCompositeKey(t *testing.T) {
 			}
 
 			fc1 := util.FileContext{Root: "workspace"}
-			dockerCommand1, err := commands.GetCommand(instructions1[0], fc1, false, true, true)
+			dockerCommand1, err := commands.GetCommand(instructions1[0], fc1, false, true, true, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -859,7 +859,7 @@ func Test_stageBuilder_populateCompositeKey(t *testing.T) {
 			}
 
 			fc2 := util.FileContext{Root: "workspace"}
-			dockerCommand2, err := commands.GetCommand(instructions[0], fc2, false, true, true)
+			dockerCommand2, err := commands.GetCommand(instructions[0], fc2, false, true, true, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1515,6 +1515,7 @@ func getCommands(fileContext util.FileContext, cmds []instructions.Command, cach
 			false,
 			cacheCopy,
 			cacheRun,
+			nil,
 		)
 		if err != nil {
 			panic(err)
@@ -1610,7 +1611,7 @@ func Test_stageBuild_populateCompositeKeyForCopyCommand(t *testing.T) {
 			}
 
 			fc := util.FileContext{Root: "workspace"}
-			copyCommand, err := commands.GetCommand(instructions[0], fc, false, true, true)
+			copyCommand, err := commands.GetCommand(instructions[0], fc, false, true, true, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
