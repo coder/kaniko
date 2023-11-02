@@ -2,6 +2,12 @@ module github.com/GoogleContainerTools/kaniko
 
 go 1.19
 
+// Remove when https://github.com/google/go-containerregistry/pull/1836 is merged.
+replace github.com/google/go-containerregistry => github.com/kylecarbs/go-containerregistry v0.0.0-20231102171157-81a4e67ba35e
+
+// Necessary for go-containerregistry to import.
+replace github.com/docker/docker => github.com/docker/docker v23.0.5+incompatible
+
 require (
 	cloud.google.com/go/storage v1.31.0
 	github.com/Azure/azure-storage-blob-go v0.14.0
@@ -17,7 +23,7 @@ require (
 	github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.0.0-20230522190001-adf1bafd791a
 	github.com/chrismellard/docker-credential-acr-env v0.0.0-20230304212654-82a0ddb27589
 	github.com/containerd/cgroups v1.1.0 // indirect
-	github.com/docker/docker v23.0.5+incompatible
+	github.com/docker/docker v24.0.0+incompatible
 	github.com/go-git/go-billy/v5 v5.4.1
 	github.com/go-git/go-git/v5 v5.7.0
 	github.com/golang/mock v1.6.0
@@ -44,7 +50,7 @@ require github.com/containerd/containerd v1.7.2
 require (
 	github.com/googleapis/enterprise-certificate-proxy v0.2.5 // indirect
 	golang.org/x/mod v0.10.0 // indirect
-	golang.org/x/tools v0.8.0 // indirect
+	golang.org/x/tools v0.9.1 // indirect
 )
 
 require (
@@ -90,7 +96,7 @@ require (
 	github.com/containerd/typeurl v1.0.2 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
-	github.com/docker/cli v23.0.5+incompatible // indirect
+	github.com/docker/cli v24.0.0+incompatible // indirect
 	github.com/docker/distribution v2.8.2+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.7.0 // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
@@ -169,6 +175,7 @@ require (
 	github.com/google/s2a-go v0.1.4 // indirect
 	github.com/google/subcommands v1.2.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
 	github.com/moby/swarmkit/v2 v2.0.0-20230315203717-e28e8ba9bc83 // indirect

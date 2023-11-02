@@ -17,9 +17,10 @@ limitations under the License.
 package buildcontext
 
 import (
-	"compress/gzip"
 	"fmt"
 	"os"
+
+	gzip "github.com/klauspost/pgzip"
 
 	kConfig "github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
