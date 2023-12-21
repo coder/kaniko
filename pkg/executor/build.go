@@ -350,7 +350,10 @@ func (s *stageBuilder) build() error {
 	}
 
 	initSnapshotTaken := false
-	if s.opts.SingleSnapshot || s.opts.RunV2 {
+	// Comment out the RunV2 check since this seems to create a seemingly useless
+	// snapshot.
+	// https://github.com/GoogleContainerTools/kaniko/issues/2800
+	if s.opts.SingleSnapshot /* || s.opts.RunV2 */ {
 		if err := s.initSnapshotWithTimings(); err != nil {
 			return err
 		}
