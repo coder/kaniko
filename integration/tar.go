@@ -17,12 +17,13 @@ limitations under the License.
 package integration
 
 import (
-	"compress/gzip"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"time"
+
+	gzip "github.com/klauspost/pgzip"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 )

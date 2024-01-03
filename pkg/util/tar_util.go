@@ -19,7 +19,6 @@ package util
 import (
 	"archive/tar"
 	"compress/bzip2"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"io/fs"
@@ -28,6 +27,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	gzip "github.com/klauspost/pgzip"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/docker/docker/pkg/archive"
