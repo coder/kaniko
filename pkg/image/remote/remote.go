@@ -17,6 +17,7 @@ limitations under the License.
 package remote
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
@@ -31,7 +32,8 @@ import (
 )
 
 var (
-	manifestCache = make(map[string]v1.Image)
+	manifestCache   = make(map[string]v1.Image)
+	remoteImageFunc = remote.Image
 )
 
 // RetrieveRemoteImage retrieves the manifest for the specified image from the specified registry
@@ -49,34 +51,48 @@ func RetrieveRemoteImage(image string, opts config.RegistryOptions, customPlatfo
 		return nil, err
 	}
 
-	if ref.Context().RegistryStr() == name.DefaultRegistry {
-		ref, err := normalizeReference(ref, image)
-		if err != nil {
-			return nil, err
-		}
+	if newRegURLs, found := opts.RegistryMaps[ref.Context().RegistryStr()]; found {
+		for _, regToMapTo := range newRegURLs {
 
-		for _, registryMirror := range opts.RegistryMirrors {
+			//extract custom path if any in all registry map and clean regToMapTo to only the registry without the path
+			custompath, regToMapTo := extractPathFromRegistryURL(regToMapTo)
+			//normalize reference is call in every fallback to ensure that the image is normalized to the new registry include the image prefix
+			ref, err = normalizeReference(ref, image, custompath)
+
+			if err != nil {
+				return nil, err
+			}
+
 			var newReg name.Registry
-			if opts.InsecurePull || opts.InsecureRegistries.Contains(registryMirror) {
-				newReg, err = name.NewRegistry(registryMirror, name.WeakValidation, name.Insecure)
+			if opts.InsecurePull || opts.InsecureRegistries.Contains(regToMapTo) {
+				newReg, err = name.NewRegistry(regToMapTo, name.WeakValidation, name.Insecure)
 			} else {
-				newReg, err = name.NewRegistry(registryMirror, name.StrictValidation)
+				newReg, err = name.NewRegistry(regToMapTo, name.StrictValidation)
 			}
 			if err != nil {
 				return nil, err
 			}
+			//ref will be already use library/ or the custom path in registry map suffix
 			ref := setNewRegistry(ref, newReg)
+			logrus.Infof("Retrieving image %s from mapped registry %s", ref, regToMapTo)
+			retryFunc := func() (v1.Image, error) {
+				return remoteImageFunc(ref, remoteOptions(regToMapTo, opts, customPlatform)...)
+			}
 
-			logrus.Infof("Retrieving image %s from registry mirror %s", ref, registryMirror)
-			remoteImage, err := remote.Image(ref, remoteOptions(registryMirror, opts, customPlatform)...)
-			if err != nil {
-				logrus.Warnf("Failed to retrieve image %s from registry mirror %s: %s. Will try with the next mirror, or fallback to the default registry.", ref, registryMirror, err)
+			var remoteImage v1.Image
+			var err error
+			if remoteImage, err = util.RetryWithResult(retryFunc, opts.ImageDownloadRetry, 1000); err != nil {
+				logrus.Warnf("Failed to retrieve image %s from remapped registry %s: %s. Will try with the next registry, or fallback to the original registry.", ref, regToMapTo, err)
 				continue
 			}
 
 			manifestCache[image] = remoteImage
 
 			return remoteImage, nil
+		}
+
+		if len(newRegURLs) > 0 && opts.SkipDefaultRegistryFallback {
+			return nil, fmt.Errorf("image not found on any configured mapped registries for %s", ref)
 		}
 	}
 
@@ -91,22 +107,28 @@ func RetrieveRemoteImage(image string, opts config.RegistryOptions, customPlatfo
 
 	logrus.Infof("Retrieving image %s from registry %s", ref, registryName)
 
-	remoteImage, err := remote.Image(ref, remoteOptions(registryName, opts, customPlatform)...)
+	retryFunc := func() (v1.Image, error) {
+		return remoteImageFunc(ref, remoteOptions(registryName, opts, customPlatform)...)
+	}
 
-	if remoteImage != nil {
+	var remoteImage v1.Image
+	if remoteImage, err = util.RetryWithResult(retryFunc, opts.ImageDownloadRetry, 1000); remoteImage != nil {
 		manifestCache[image] = remoteImage
 	}
 
 	return remoteImage, err
 }
 
-// normalizeReference adds the library/ prefix to images without it.
+// normalizeReference adds the library/ or the {path}/ in registry map suffix to images without it.
 //
-// It is mostly useful when using a registry mirror that is not able to perform
-// this fix automatically.
-func normalizeReference(ref name.Reference, image string) (name.Reference, error) {
+// It is mostly useful when using a registry maps that is not able to perform
+// this fix automatically add library or the custom path on registry map.
+func normalizeReference(ref name.Reference, image string, custompath string) (name.Reference, error) {
+	if custompath == "" {
+		custompath = "library"
+	}
 	if !strings.ContainsRune(image, '/') {
-		return name.ParseReference("library/"+image, name.WeakValidation)
+		return name.ParseReference(custompath+"/"+image, name.WeakValidation)
 	}
 
 	return ref, nil
@@ -141,4 +163,18 @@ func remoteOptions(registryName string, opts config.RegistryOptions, customPlatf
 	}
 
 	return []remote.Option{remote.WithTransport(tr), remote.WithAuthFromKeychain(creds.GetKeychain()), remote.WithPlatform(*platform)}
+}
+
+// Parse the registry URL
+// example: regURL = "registry.example.com/namespace/repo:tag" will return namespace/repo
+func extractPathFromRegistryURL(regFullURL string) (string, string) {
+	// Split the regURL by slashes
+	// becaues the registry url is write without scheme, we just need to remove the first one
+	segments := strings.Split(regFullURL, "/")
+	// Join all segments except the first one (which is typically empty)
+	path := strings.Join(segments[1:], "/")
+	// get the fist segment to get the registry url
+	regURL := segments[0]
+
+	return path, regURL
 }

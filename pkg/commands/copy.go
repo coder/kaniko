@@ -58,9 +58,15 @@ func (c *CopyCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bu
 		return errors.Wrap(err, "getting user group from chown")
 	}
 
+	// sources from the Copy command are resolved with wildcards {*?[}
 	srcs, dest, err := util.ResolveEnvAndWildcards(c.cmd.SourcesAndDest, c.fileContext, replacementEnvs)
 	if err != nil {
 		return errors.Wrap(err, "resolving src")
+	}
+
+	chmod, useDefaultChmod, err := util.GetChmod(c.cmd.Chmod, replacementEnvs)
+	if err != nil {
+		return errors.Wrap(err, "getting permissions from chmod")
 	}
 
 	// For each source, iterate through and copy it over
@@ -92,7 +98,7 @@ func (c *CopyCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bu
 		}
 
 		if fi.IsDir() {
-			copiedFiles, err := util.CopyDir(fullPath, destPath, c.fileContext, uid, gid)
+			copiedFiles, err := util.CopyDir(fullPath, destPath, c.fileContext, uid, gid, chmod, useDefaultChmod)
 			if err != nil {
 				return errors.Wrap(err, "copying dir")
 			}
@@ -109,7 +115,7 @@ func (c *CopyCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bu
 			c.snapshotFiles = append(c.snapshotFiles, destPath)
 		} else {
 			// ... Else, we want to copy over a file
-			exclude, err := util.CopyFile(fullPath, destPath, c.fileContext, uid, gid)
+			exclude, err := util.CopyFile(fullPath, destPath, c.fileContext, uid, gid, chmod, useDefaultChmod)
 			if err != nil {
 				return errors.Wrap(err, "copying file")
 			}

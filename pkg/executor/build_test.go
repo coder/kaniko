@@ -20,7 +20,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -40,6 +39,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 )
 
@@ -616,12 +616,12 @@ func Test_stageBuilder_optimize(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			cf := &v1.ConfigFile{}
-			snap := fakeSnapShotter{}
+			snap := &fakeSnapShotter{}
 			lc := &fakeLayerCache{retrieve: tc.retrieve}
 			sb := &stageBuilder{opts: tc.opts, cf: cf, snapshotter: snap, layerCache: lc,
 				args: dockerfile.NewBuildArgs([]string{})}
 			ck := CompositeCache{}
-			file, err := ioutil.TempFile("", "foo")
+			file, err := os.CreateTemp("", "foo")
 			if err != nil {
 				t.Error(err)
 			}
@@ -770,6 +770,34 @@ func Test_stageBuilder_populateCompositeKey(t *testing.T) {
 				[]string{"ENV=1"},
 			),
 		},
+		{
+			description: "cache key for command [RUN] with same env values [check that variable no interpolate in RUN command]",
+			cmd1: newStageContext(
+				"RUN echo $ENV > test",
+				map[string]string{"ARG": "foo"},
+				[]string{"ENV=1"},
+			),
+			cmd2: newStageContext(
+				"RUN echo 1 > test",
+				map[string]string{"ARG": "foo"},
+				[]string{"ENV=1"},
+			),
+			shdEqual: false,
+		},
+		{
+			description: "cache key for command [RUN] with different env values [check that variable no interpolate in RUN command]",
+			cmd1: newStageContext(
+				"RUN echo ${APP_VERSION%.*} ${APP_VERSION%-*} > test",
+				map[string]string{"ARG": "foo"},
+				[]string{"ENV=1"},
+			),
+			cmd2: newStageContext(
+				"RUN echo ${APP_VERSION%.*} ${APP_VERSION%-*} > test",
+				map[string]string{"ARG": "foo"},
+				[]string{"ENV=2"},
+			),
+			shdEqual: false,
+		},
 		func() testcase {
 			dir, files := tempDirAndFile(t)
 			file := files[0]
@@ -848,7 +876,7 @@ func Test_stageBuilder_populateCompositeKey(t *testing.T) {
 			}
 
 			fc1 := util.FileContext{Root: "workspace"}
-			dockerCommand1, err := commands.GetCommand(instructions1[0], fc1, false, true, true, nil)
+			dockerCommand1, err := commands.GetCommand(instructions1[0], fc1, false, true, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -859,7 +887,7 @@ func Test_stageBuilder_populateCompositeKey(t *testing.T) {
 			}
 
 			fc2 := util.FileContext{Root: "workspace"}
-			dockerCommand2, err := commands.GetCommand(instructions[0], fc2, false, true, true, nil)
+			dockerCommand2, err := commands.GetCommand(instructions[0], fc2, false, true, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -896,6 +924,7 @@ func Test_stageBuilder_build(t *testing.T) {
 		stage              config.KanikoStage
 		crossStageDeps     map[int][]string
 		mockGetFSFromImage func(root string, img v1.Image, extract util.ExtractFunction) ([]string, error)
+		shouldInitSnapshot bool
 	}
 
 	testCases := []testcase{
@@ -995,6 +1024,15 @@ func Test_stageBuilder_build(t *testing.T) {
 				rootDir:           dir,
 			}
 		}(),
+		{
+			description: "use new run",
+			opts:        &config.KanikoOptions{RunV2: true},
+		},
+		{
+			description:        "single snapshot",
+			opts:               &config.KanikoOptions{SingleSnapshot: true},
+			shouldInitSnapshot: true,
+		},
 		{
 			description: "fake command cache disabled and key not in cache",
 			opts:        &config.KanikoOptions{Cache: false},
@@ -1223,7 +1261,7 @@ COPY %s bar.txt
 				t.Errorf("couldn't create hash %v", err)
 			}
 
-			ch.AddKey(fmt.Sprintf("RUN foobar"))
+			ch.AddKey("RUN foobar")
 
 			// run hash
 			runHash, err := ch.Hash()
@@ -1244,7 +1282,7 @@ FROM ubuntu:16.04
 COPY %s bar.txt
 RUN foobar
 `, filename)
-			f, _ := ioutil.TempFile("", "")
+			f, _ := os.CreateTemp("", "")
 			os.WriteFile(f.Name(), []byte(dockerFile), 0755)
 			opts := &config.KanikoOptions{
 				DockerfilePath: f.Name(),
@@ -1321,7 +1359,7 @@ RUN foobar
 			ch := NewCompositeCache("")
 			ch.AddKey("|1")
 			ch.AddKey("arg=value")
-			ch.AddKey("RUN value")
+			ch.AddKey("RUN $arg")
 			hash, err := ch.Hash()
 			if err != nil {
 				t.Errorf("couldn't create hash %v", err)
@@ -1366,7 +1404,7 @@ RUN foobar
 			ch2 := NewCompositeCache("")
 			ch2.AddKey("|1")
 			ch2.AddKey("arg=anotherValue")
-			ch2.AddKey("RUN anotherValue")
+			ch2.AddKey("RUN $arg")
 			hash2, err := ch2.Hash()
 			if err != nil {
 				t.Errorf("couldn't create hash %v", err)
@@ -1437,7 +1475,7 @@ RUN foobar
 				}
 			}
 
-			snap := fakeSnapShotter{file: fileName}
+			snap := &fakeSnapShotter{file: fileName}
 			lc := tc.layerCache
 			if lc == nil {
 				lc = &fakeLayerCache{}
@@ -1473,6 +1511,11 @@ RUN foobar
 			err := sb.build()
 			if err != nil {
 				t.Errorf("Expected error to be nil but was %v", err)
+			}
+			if tc.shouldInitSnapshot && !snap.initialized {
+				t.Errorf("Snapshotter was not initialized but should have been")
+			} else if !tc.shouldInitSnapshot && snap.initialized {
+				t.Errorf("Snapshotter was initialized but should not have been")
 			}
 			assertCacheKeys(t, tc.expectedCacheKeys, lc.receivedKeys, "receive")
 			assertCacheKeys(t, tc.pushedCacheKeys, keys, "push")
@@ -1515,7 +1558,6 @@ func getCommands(fileContext util.FileContext, cmds []instructions.Command, cach
 			false,
 			cacheCopy,
 			cacheRun,
-			nil,
 		)
 		if err != nil {
 			panic(err)
@@ -1531,7 +1573,7 @@ func tempDirAndFile(t *testing.T) (string, []string) {
 	dir := t.TempDir()
 	for _, filename := range filenames {
 		filepath := filepath.Join(dir, filename)
-		err := ioutil.WriteFile(filepath, []byte(`meow`), 0777)
+		err := os.WriteFile(filepath, []byte(`meow`), 0777)
 		if err != nil {
 			t.Errorf("could not create temp file %v", err)
 		}
@@ -1560,7 +1602,7 @@ func generateTar(t *testing.T, dir string, fileNames ...string) []byte {
 			t.Errorf("could not write tar header %v", err)
 		}
 
-		content, err := ioutil.ReadFile(filePath)
+		content, err := os.ReadFile(filePath)
 		if err != nil {
 			t.Errorf("could not read tempfile %v", err)
 		}
@@ -1611,7 +1653,7 @@ func Test_stageBuild_populateCompositeKeyForCopyCommand(t *testing.T) {
 			}
 
 			fc := util.FileContext{Root: "workspace"}
-			copyCommand, err := commands.GetCommand(instructions[0], fc, false, true, true, nil)
+			copyCommand, err := commands.GetCommand(instructions[0], fc, false, true, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1701,5 +1743,282 @@ func Test_ResolveCrossStageInstructions(t *testing.T) {
 
 		expectedMap := map[string]string{"second": "1", "third": "2"}
 		testutil.CheckDeepEqual(t, expectedMap, stageToIdx)
+	}
+}
+
+func Test_stageBuilder_saveSnapshotToLayer(t *testing.T) {
+	dir, files := tempDirAndFile(t)
+	type fields struct {
+		stage            config.KanikoStage
+		image            v1.Image
+		cf               *v1.ConfigFile
+		baseImageDigest  string
+		finalCacheKey    string
+		opts             *config.KanikoOptions
+		fileContext      util.FileContext
+		cmds             []commands.DockerCommand
+		args             *dockerfile.BuildArgs
+		crossStageDeps   map[int][]string
+		digestToCacheKey map[string]string
+		stageIdxToDigest map[string]string
+		snapshotter      snapShotter
+		layerCache       cache.LayerCache
+		pushLayerToCache cachePusher
+	}
+	type args struct {
+		tarPath string
+	}
+	tests := []struct {
+		name              string
+		fields            fields
+		args              args
+		expectedMediaType types.MediaType
+		expectedDiff      v1.Hash
+		expectedDigest    v1.Hash
+		wantErr           bool
+	}{
+		{
+			name: "oci image",
+			fields: fields{
+				image: ociFakeImage{},
+				opts: &config.KanikoOptions{
+					ForceBuildMetadata: true,
+				},
+			},
+			args: args{
+				tarPath: filepath.Join(dir, files[0]),
+			},
+			expectedMediaType: types.OCILayer,
+			expectedDiff: v1.Hash{
+				Algorithm: "sha256",
+				Hex:       "404cdd7bc109c432f8cc2443b45bcfe95980f5107215c645236e577929ac3e52",
+			},
+			expectedDigest: v1.Hash{
+				Algorithm: "sha256",
+				Hex:       "1dc5887a31ec6b388646be46c5f0b2036f92f4cbba50d12163a8be4074565a91",
+			},
+		},
+		{
+			name: "docker image",
+			fields: fields{
+				image: fakeImage{},
+				opts: &config.KanikoOptions{
+					ForceBuildMetadata: true,
+				},
+			},
+			args: args{
+				tarPath: filepath.Join(dir, files[0]),
+			},
+			expectedMediaType: types.DockerLayer,
+			expectedDiff: v1.Hash{
+				Algorithm: "sha256",
+				Hex:       "404cdd7bc109c432f8cc2443b45bcfe95980f5107215c645236e577929ac3e52",
+			},
+			expectedDigest: v1.Hash{
+				Algorithm: "sha256",
+				Hex:       "1dc5887a31ec6b388646be46c5f0b2036f92f4cbba50d12163a8be4074565a91",
+			},
+		},
+		{
+			name: "oci image, zstd compression",
+			fields: fields{
+				image: ociFakeImage{},
+				opts: &config.KanikoOptions{
+					ForceBuildMetadata: true,
+					Compression:        config.ZStd,
+				},
+			},
+			args: args{
+				tarPath: filepath.Join(dir, files[0]),
+			},
+			expectedMediaType: types.OCILayerZStd,
+			expectedDiff: v1.Hash{
+				Algorithm: "sha256",
+				Hex:       "404cdd7bc109c432f8cc2443b45bcfe95980f5107215c645236e577929ac3e52",
+			},
+			expectedDigest: v1.Hash{
+				Algorithm: "sha256",
+				Hex:       "28369c11d9b68c9877781eaf4d8faffb4d0ada1900a1fb83ad452e58a072b45b",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &stageBuilder{
+				stage:            tt.fields.stage,
+				image:            tt.fields.image,
+				cf:               tt.fields.cf,
+				baseImageDigest:  tt.fields.baseImageDigest,
+				finalCacheKey:    tt.fields.finalCacheKey,
+				opts:             tt.fields.opts,
+				fileContext:      tt.fields.fileContext,
+				cmds:             tt.fields.cmds,
+				args:             tt.fields.args,
+				crossStageDeps:   tt.fields.crossStageDeps,
+				digestToCacheKey: tt.fields.digestToCacheKey,
+				stageIdxToDigest: tt.fields.stageIdxToDigest,
+				snapshotter:      tt.fields.snapshotter,
+				layerCache:       tt.fields.layerCache,
+				pushLayerToCache: tt.fields.pushLayerToCache,
+			}
+			got, err := s.saveSnapshotToLayer(tt.args.tarPath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("stageBuilder.saveSnapshotToLayer() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if mt, _ := got.MediaType(); mt != tt.expectedMediaType {
+				t.Errorf("expected mediatype %s, got %s", tt.expectedMediaType, mt)
+				return
+			}
+			if diff, _ := got.DiffID(); diff != tt.expectedDiff {
+				t.Errorf("expected diff %s, got %s", tt.expectedDiff, diff)
+				return
+			}
+			if digest, _ := got.Digest(); digest != tt.expectedDigest {
+				t.Errorf("expected digest %s, got %s", tt.expectedDigest, digest)
+				return
+			}
+		})
+	}
+}
+
+func Test_stageBuilder_convertLayerMediaType(t *testing.T) {
+	type fields struct {
+		stage            config.KanikoStage
+		image            v1.Image
+		cf               *v1.ConfigFile
+		baseImageDigest  string
+		finalCacheKey    string
+		opts             *config.KanikoOptions
+		fileContext      util.FileContext
+		cmds             []commands.DockerCommand
+		args             *dockerfile.BuildArgs
+		crossStageDeps   map[int][]string
+		digestToCacheKey map[string]string
+		stageIdxToDigest map[string]string
+		snapshotter      snapShotter
+		layerCache       cache.LayerCache
+		pushLayerToCache cachePusher
+	}
+	type args struct {
+		layer v1.Layer
+	}
+	tests := []struct {
+		name              string
+		fields            fields
+		args              args
+		expectedMediaType types.MediaType
+		wantErr           bool
+	}{
+		{
+			name: "docker image w/ docker layer",
+			fields: fields{
+				image: fakeImage{},
+			},
+			args: args{
+				layer: fakeLayer{
+					mediaType: types.DockerLayer,
+				},
+			},
+			expectedMediaType: types.DockerLayer,
+		},
+		{
+			name: "oci image w/ oci layer",
+			fields: fields{
+				image: ociFakeImage{},
+			},
+			args: args{
+				layer: fakeLayer{
+					mediaType: types.OCILayer,
+				},
+			},
+			expectedMediaType: types.OCILayer,
+		},
+		{
+			name: "oci image w/ convertable docker layer",
+			fields: fields{
+				image: ociFakeImage{},
+				opts:  &config.KanikoOptions{},
+			},
+			args: args{
+				layer: fakeLayer{
+					mediaType: types.DockerLayer,
+				},
+			},
+			expectedMediaType: types.OCILayer,
+		},
+		{
+			name: "oci image w/ convertable docker layer and zstd compression",
+			fields: fields{
+				image: ociFakeImage{},
+				opts: &config.KanikoOptions{
+					Compression: config.ZStd,
+				},
+			},
+			args: args{
+				layer: fakeLayer{
+					mediaType: types.DockerLayer,
+				},
+			},
+			expectedMediaType: types.OCILayerZStd,
+		},
+		{
+			name: "docker image and oci zstd layer",
+			fields: fields{
+				image: dockerFakeImage{},
+				opts:  &config.KanikoOptions{},
+			},
+			args: args{
+				layer: fakeLayer{
+					mediaType: types.OCILayerZStd,
+				},
+			},
+			expectedMediaType: types.DockerLayer,
+		},
+		{
+			name: "docker image w/ uncovertable oci image",
+			fields: fields{
+				image: dockerFakeImage{},
+				opts:  &config.KanikoOptions{},
+			},
+			args: args{
+				layer: fakeLayer{
+					mediaType: types.OCIUncompressedRestrictedLayer,
+				},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &stageBuilder{
+				stage:            tt.fields.stage,
+				image:            tt.fields.image,
+				cf:               tt.fields.cf,
+				baseImageDigest:  tt.fields.baseImageDigest,
+				finalCacheKey:    tt.fields.finalCacheKey,
+				opts:             tt.fields.opts,
+				fileContext:      tt.fields.fileContext,
+				cmds:             tt.fields.cmds,
+				args:             tt.fields.args,
+				crossStageDeps:   tt.fields.crossStageDeps,
+				digestToCacheKey: tt.fields.digestToCacheKey,
+				stageIdxToDigest: tt.fields.stageIdxToDigest,
+				snapshotter:      tt.fields.snapshotter,
+				layerCache:       tt.fields.layerCache,
+				pushLayerToCache: tt.fields.pushLayerToCache,
+			}
+			got, err := s.convertLayerMediaType(tt.args.layer)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("stageBuilder.convertLayerMediaType() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if err == nil {
+				mt, _ := got.MediaType()
+				if mt != tt.expectedMediaType {
+					t.Errorf("stageBuilder.convertLayerMediaType() = %v, want %v", mt, tt.expectedMediaType)
+				}
+			}
+		})
 	}
 }

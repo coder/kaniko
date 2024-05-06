@@ -22,7 +22,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"math"
 	"net/http"
 	"os"
@@ -34,10 +34,10 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
 	"github.com/docker/docker/pkg/archive"
-	"github.com/docker/docker/pkg/fileutils"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/karrick/godirwalk"
 	"github.com/moby/buildkit/frontend/dockerfile/dockerignore"
+	"github.com/moby/patternmatcher"
 	otiai10Cpy "github.com/otiai10/copy"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -60,7 +60,7 @@ type IgnoreListEntry struct {
 
 var defaultIgnoreList = []IgnoreListEntry{
 	{
-		Path:            config.KanikoDir,
+		Path:            filepath.Clean(config.KanikoDir),
 		PrefixMatchOnly: false,
 	},
 	{
@@ -81,12 +81,19 @@ var ignorelist = append([]IgnoreListEntry{}, defaultIgnoreList...)
 
 var volumes = []string{}
 
+// skipKanikoDir opts to skip the '/kaniko' dir for otiai10.copy which should be ignored in root
+var skipKanikoDir = otiai10Cpy.Options{
+	Skip: func(info os.FileInfo, src, dest string) (bool, error) {
+		return strings.HasSuffix(src, "/kaniko"), nil
+	},
+}
+
 type FileContext struct {
 	Root          string
 	ExcludedFiles []string
 }
 
-type ExtractFunction func(string, *tar.Header, io.Reader) error
+type ExtractFunction func(string, *tar.Header, string, io.Reader) error
 
 type FSConfig struct {
 	includeWhiteout bool
@@ -100,11 +107,17 @@ func IgnoreList() []IgnoreListEntry {
 }
 
 func AddToIgnoreList(entry IgnoreListEntry) {
-	ignorelist = append(ignorelist, entry)
+	ignorelist = append(ignorelist, IgnoreListEntry{
+		Path:            filepath.Clean(entry.Path),
+		PrefixMatchOnly: entry.PrefixMatchOnly,
+	})
 }
 
 func AddToDefaultIgnoreList(entry IgnoreListEntry) {
-	defaultIgnoreList = append(defaultIgnoreList, entry)
+	defaultIgnoreList = append(defaultIgnoreList, IgnoreListEntry{
+		Path:            filepath.Clean(entry.Path),
+		PrefixMatchOnly: entry.PrefixMatchOnly,
+	})
 }
 
 func IncludeWhiteout() FSOpt {
@@ -137,7 +150,7 @@ func GetFSFromImage(root string, img v1.Image, extract ExtractFunction) ([]strin
 func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, error) {
 	volumes = []string{}
 	cfg := new(FSConfig)
-	if err := InitIgnoreList(true); err != nil {
+	if err := InitIgnoreList(); err != nil {
 		return nil, errors.Wrap(err, "initializing filesystem ignore list")
 	}
 	logrus.Debugf("Ignore list: %v", ignorelist)
@@ -175,7 +188,8 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 				return nil, errors.Wrap(err, fmt.Sprintf("error reading tar %d", i))
 			}
 
-			path := filepath.Join(root, filepath.Clean(hdr.Name))
+			cleanedName := filepath.Clean(hdr.Name)
+			path := filepath.Join(root, cleanedName)
 			base := filepath.Base(path)
 			dir := filepath.Dir(path)
 
@@ -185,7 +199,7 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 				name := strings.TrimPrefix(base, archive.WhiteoutPrefix)
 				path := filepath.Join(dir, name)
 
-				if CheckIgnoreList(path) {
+				if CheckCleanedPathAgainstIgnoreList(path) {
 					logrus.Tracef("Not deleting %s, as it's ignored", path)
 					continue
 				}
@@ -205,11 +219,11 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 
 			}
 
-			if err := cfg.extractFunc(root, hdr, tr); err != nil {
+			if err := cfg.extractFunc(root, hdr, cleanedName, tr); err != nil {
 				return nil, err
 			}
 
-			extractedFiles = append(extractedFiles, filepath.Join(root, filepath.Clean(hdr.Name)))
+			extractedFiles = append(extractedFiles, filepath.Join(root, cleanedName))
 		}
 	}
 	return extractedFiles, nil
@@ -224,7 +238,7 @@ func DeleteFilesystem() error {
 			return nil //nolint:nilerr
 		}
 
-		if CheckIgnoreList(path) {
+		if CheckCleanedPathAgainstIgnoreList(path) {
 			if !isExist(path) {
 				logrus.Debugf("Path %s ignored, but not exists", path)
 				return nil
@@ -276,16 +290,17 @@ func UnTar(r io.Reader, dest string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := ExtractFile(dest, hdr, tr); err != nil {
+		cleanedName := filepath.Clean(hdr.Name)
+		if err := ExtractFile(dest, hdr, cleanedName, tr); err != nil {
 			return nil, err
 		}
-		extractedFiles = append(extractedFiles, filepath.Join(dest, filepath.Clean(hdr.Name)))
+		extractedFiles = append(extractedFiles, filepath.Join(dest, cleanedName))
 	}
 	return extractedFiles, nil
 }
 
-func ExtractFile(dest string, hdr *tar.Header, tr io.Reader) error {
-	path := filepath.Join(dest, filepath.Clean(hdr.Name))
+func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader) error {
+	path := filepath.Join(dest, cleanedName)
 	base := filepath.Base(path)
 	dir := filepath.Dir(path)
 	mode := hdr.FileInfo().Mode()
@@ -297,7 +312,7 @@ func ExtractFile(dest string, hdr *tar.Header, tr io.Reader) error {
 		return err
 	}
 
-	if CheckIgnoreList(abs) && !checkIgnoreListRoot(dest) {
+	if CheckCleanedPathAgainstIgnoreList(abs) && !checkIgnoreListRoot(dest) {
 		logrus.Debugf("Not adding %s because it is ignored", path)
 		return nil
 	}
@@ -311,7 +326,7 @@ func ExtractFile(dest string, hdr *tar.Header, tr io.Reader) error {
 		if os.IsNotExist(err) || !fi.IsDir() {
 			logrus.Debugf("Base %s for file %s does not exist. Creating.", base, path)
 
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return err
 			}
 		}
@@ -337,7 +352,7 @@ func ExtractFile(dest string, hdr *tar.Header, tr io.Reader) error {
 			return err
 		}
 
-		if err = writeSecurityXattrToToFile(path, hdr); err != nil {
+		if err = writeSecurityXattrToTarFile(path, hdr); err != nil {
 			return err
 		}
 
@@ -358,12 +373,12 @@ func ExtractFile(dest string, hdr *tar.Header, tr io.Reader) error {
 		if err != nil {
 			return err
 		}
-		if CheckIgnoreList(abs) {
+		if CheckCleanedPathAgainstIgnoreList(abs) {
 			logrus.Tracef("Skipping link from %s to %s because %s is ignored", hdr.Linkname, path, hdr.Linkname)
 			return nil
 		}
 		// The base directory for a link may not exist before it is created.
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 		// Check if something already exists at path
@@ -381,7 +396,7 @@ func ExtractFile(dest string, hdr *tar.Header, tr io.Reader) error {
 	case tar.TypeSymlink:
 		logrus.Tracef("Symlink from %s to %s", hdr.Linkname, path)
 		// The base directory for a symlink may not exist before it is created.
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 		// Check if something already exists at path
@@ -399,6 +414,7 @@ func ExtractFile(dest string, hdr *tar.Header, tr io.Reader) error {
 }
 
 func IsInProvidedIgnoreList(path string, wl []IgnoreListEntry) bool {
+	path = filepath.Clean(path)
 	for _, entry := range wl {
 		if !entry.PrefixMatchOnly && path == entry.Path {
 			return true
@@ -412,9 +428,9 @@ func IsInIgnoreList(path string) bool {
 	return IsInProvidedIgnoreList(path, ignorelist)
 }
 
-func CheckProvidedIgnoreList(path string, wl []IgnoreListEntry) bool {
+func CheckCleanedPathAgainstProvidedIgnoreList(path string, wl []IgnoreListEntry) bool {
 	for _, wl := range ignorelist {
-		if HasFilepathPrefix(path, wl.Path, wl.PrefixMatchOnly) {
+		if hasCleanedFilepathPrefix(path, wl.Path, wl.PrefixMatchOnly) {
 			return true
 		}
 	}
@@ -423,7 +439,11 @@ func CheckProvidedIgnoreList(path string, wl []IgnoreListEntry) bool {
 }
 
 func CheckIgnoreList(path string) bool {
-	return CheckProvidedIgnoreList(path, ignorelist)
+	return CheckCleanedPathAgainstIgnoreList(filepath.Clean(path))
+}
+
+func CheckCleanedPathAgainstIgnoreList(path string) bool {
+	return CheckCleanedPathAgainstProvidedIgnoreList(path, ignorelist)
 }
 
 func checkIgnoreListRoot(root string) bool {
@@ -463,7 +483,7 @@ func DetectFilesystemIgnoreList(path string) error {
 		}
 		if lineArr[4] != config.RootDir {
 			logrus.Tracef("Adding ignore list entry %s from line: %s", lineArr[4], line)
-			ignorelist = append(ignorelist, IgnoreListEntry{
+			AddToIgnoreList(IgnoreListEntry{
 				Path:            lineArr[4],
 				PrefixMatchOnly: false,
 			})
@@ -480,12 +500,13 @@ func DetectFilesystemIgnoreList(path string) error {
 func RelativeFiles(fp string, root string) ([]string, error) {
 	var files []string
 	fullPath := filepath.Join(root, fp)
+	cleanedRoot := filepath.Clean(root)
 	logrus.Debugf("Getting files and contents at root %s for %s", root, fullPath)
 	err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if CheckIgnoreList(path) && !HasFilepathPrefix(path, root, false) {
+		if CheckCleanedPathAgainstIgnoreList(path) && !hasCleanedFilepathPrefix(filepath.Clean(path), cleanedRoot, false) {
 			return nil
 		}
 		relPath, err := filepath.Rel(root, path)
@@ -564,7 +585,7 @@ func resetFileOwnershipIfNotMatching(path string, newUID, newGID uint32) error {
 // CreateFile creates a file at path and copies over contents from the reader
 func CreateFile(path string, reader io.Reader, perm os.FileMode, uid uint32, gid uint32) error {
 	// Create directory path if it doesn't exist
-	if err := createParentDirectory(path); err != nil {
+	if err := createParentDirectory(path, int(uid), int(gid)); err != nil {
 		return errors.Wrap(err, "creating parent dir")
 	}
 
@@ -591,7 +612,7 @@ func CreateFile(path string, reader io.Reader, perm os.FileMode, uid uint32, gid
 // AddVolumePath adds the given path to the volume ignorelist.
 func AddVolumePathToIgnoreList(path string) {
 	logrus.Infof("Adding volume %s to ignorelist", path)
-	ignorelist = append(ignorelist, IgnoreListEntry{
+	AddToIgnoreList(IgnoreListEntry{
 		Path:            path,
 		PrefixMatchOnly: true,
 	})
@@ -601,9 +622,9 @@ func AddVolumePathToIgnoreList(path string) {
 // DownloadFileToDest downloads the file at rawurl to the given dest for the ADD command
 // From add command docs:
 //  1. If <src> is a remote file URL:
-//     - destination will have permissions of 0600
+//     - destination will have permissions of 0600 by default if not specified with chmod
 //     - If remote file has HTTP Last-Modified header, we set the mtime of the file to that timestamp
-func DownloadFileToDest(rawurl, dest string, uid, gid int64) error {
+func DownloadFileToDest(rawurl, dest string, uid, gid int64, chmod fs.FileMode) error {
 	resp, err := http.Get(rawurl) //nolint:noctx
 	if err != nil {
 		return err
@@ -614,7 +635,7 @@ func DownloadFileToDest(rawurl, dest string, uid, gid int64) error {
 		return fmt.Errorf("invalid response status %d", resp.StatusCode)
 	}
 
-	if err := CreateFile(dest, resp.Body, 0600, uint32(uid), uint32(gid)); err != nil {
+	if err := CreateFile(dest, resp.Body, chmod, uint32(uid), uint32(gid)); err != nil {
 		return err
 	}
 	mTime := time.Time{}
@@ -641,7 +662,7 @@ func DetermineTargetFileOwnership(fi os.FileInfo, uid, gid int64) (int64, int64)
 
 // CopyDir copies the file or directory at src to dest
 // It returns a list of files it copied over
-func CopyDir(src, dest string, context FileContext, uid, gid int64) ([]string, error) {
+func CopyDir(src, dest string, context FileContext, uid, gid int64, chmod fs.FileMode, useDefaultChmod bool) ([]string, error) {
 	files, err := RelativeFiles("", src)
 	if err != nil {
 		return nil, errors.Wrap(err, "copying dir")
@@ -649,19 +670,22 @@ func CopyDir(src, dest string, context FileContext, uid, gid int64) ([]string, e
 	var copiedFiles []string
 	for _, file := range files {
 		fullPath := filepath.Join(src, file)
-		fi, err := os.Lstat(fullPath)
-		if err != nil {
-			return nil, errors.Wrap(err, "copying dir")
-		}
 		if context.ExcludesFile(fullPath) {
 			logrus.Debugf("%s found in .dockerignore, ignoring", src)
 			continue
+		}
+		fi, err := os.Lstat(fullPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "copying dir")
 		}
 		destPath := filepath.Join(dest, file)
 		if fi.IsDir() {
 			logrus.Tracef("Creating directory %s", destPath)
 
-			mode := fi.Mode()
+			mode := chmod
+			if useDefaultChmod {
+				mode = fi.Mode()
+			}
 			uid, gid := DetermineTargetFileOwnership(fi, uid, gid)
 			if err := MkdirAllWithPermissions(destPath, mode, uid, gid); err != nil {
 				return nil, err
@@ -673,7 +697,12 @@ func CopyDir(src, dest string, context FileContext, uid, gid int64) ([]string, e
 			}
 		} else {
 			// ... Else, we want to copy over a file
-			if _, err := CopyFile(fullPath, destPath, context, uid, gid); err != nil {
+			mode := chmod
+			if useDefaultChmod {
+				mode = fs.FileMode(0o600)
+			}
+
+			if _, err := CopyFile(fullPath, destPath, context, uid, gid, mode, useDefaultChmod); err != nil {
 				return nil, err
 			}
 		}
@@ -693,7 +722,7 @@ func CopySymlink(src, dest string, context FileContext) (bool, error) {
 			return false, err
 		}
 	}
-	if err := createParentDirectory(dest); err != nil {
+	if err := createParentDirectory(dest, DoNotChangeUID, DoNotChangeGID); err != nil {
 		return false, err
 	}
 	link, err := os.Readlink(src)
@@ -704,7 +733,7 @@ func CopySymlink(src, dest string, context FileContext) (bool, error) {
 }
 
 // CopyFile copies the file at src to dest
-func CopyFile(src, dest string, context FileContext, uid, gid int64) (bool, error) {
+func CopyFile(src, dest string, context FileContext, uid, gid int64, chmod fs.FileMode, useDefaultChmod bool) (bool, error) {
 	if context.ExcludesFile(src) {
 		logrus.Debugf("%s found in .dockerignore, ignoring", src)
 		return true, nil
@@ -726,7 +755,12 @@ func CopyFile(src, dest string, context FileContext, uid, gid int64) (bool, erro
 	}
 	defer srcFile.Close()
 	uid, gid = DetermineTargetFileOwnership(fi, uid, gid)
-	return false, CreateFile(dest, srcFile, fi.Mode(), uint32(uid), uint32(gid))
+
+	mode := chmod
+	if useDefaultChmod {
+		mode = fi.Mode()
+	}
+	return false, CreateFile(dest, srcFile, mode, uint32(uid), uint32(gid))
 }
 
 func NewFileContextFromDockerfile(dockerfilePath, buildcontext string) (FileContext, error) {
@@ -749,7 +783,7 @@ func getExcludedFiles(dockerfilePath, buildcontext string) ([]string, error) {
 		return nil, nil
 	}
 	logrus.Infof("Using dockerignore file: %v", path)
-	contents, err := ioutil.ReadFile(path)
+	contents, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "parsing .dockerignore")
 	}
@@ -768,7 +802,7 @@ func (c FileContext) ExcludesFile(path string) bool {
 			return false
 		}
 	}
-	match, err := fileutils.Matches(path, c.ExcludedFiles)
+	match, err := patternmatcher.Matches(path, c.ExcludedFiles)
 	if err != nil {
 		logrus.Errorf("Error matching, including %s in build: %v", path, err)
 		return false
@@ -778,11 +812,12 @@ func (c FileContext) ExcludesFile(path string) bool {
 
 // HasFilepathPrefix checks if the given file path begins with prefix
 func HasFilepathPrefix(path, prefix string, prefixMatchOnly bool) bool {
-	prefix = filepath.Clean(prefix)
-	prefixArray := strings.Split(prefix, "/")
-	path = filepath.Clean(path)
-	pathArray := strings.SplitN(path, "/", len(prefixArray)+1)
+	return hasCleanedFilepathPrefix(filepath.Clean(path), filepath.Clean(prefix), prefixMatchOnly)
+}
 
+func hasCleanedFilepathPrefix(path, prefix string, prefixMatchOnly bool) bool {
+	prefixArray := strings.Split(prefix, "/")
+	pathArray := strings.SplitN(path, "/", len(prefixArray)+1)
 	if len(pathArray) < len(prefixArray) {
 		return false
 	}
@@ -882,7 +917,7 @@ func CreateTargetTarfile(tarpath string) (*os.File, error) {
 	baseDir := filepath.Dir(tarpath)
 	if _, err := os.Lstat(baseDir); os.IsNotExist(err) {
 		logrus.Debugf("BaseDir %s for file %s does not exist. Creating.", baseDir, tarpath)
-		if err := os.MkdirAll(baseDir, 0755); err != nil {
+		if err := os.MkdirAll(baseDir, 0o755); err != nil {
 			return nil, err
 		}
 	}
@@ -936,12 +971,12 @@ func CopyFileOrSymlink(src string, destDir string, root string) error {
 		if err != nil {
 			return errors.Wrap(err, "copying file or symlink")
 		}
-		if err := createParentDirectory(destFile); err != nil {
+		if err := createParentDirectory(destFile, DoNotChangeUID, DoNotChangeGID); err != nil {
 			return err
 		}
 		return os.Symlink(link, destFile)
 	}
-	if err := otiai10Cpy.Copy(src, destFile); err != nil {
+	if err := otiai10Cpy.Copy(src, destFile, skipKanikoDir); err != nil {
 		return errors.Wrap(err, "copying file")
 	}
 	if err := CopyOwnership(src, destDir, root); err != nil {
@@ -968,7 +1003,7 @@ func CopyOwnership(src string, destDir string, root string) error {
 		}
 		destPath := filepath.Join(destDir, relPath)
 
-		if CheckIgnoreList(src) && CheckIgnoreList(destPath) {
+		if CheckCleanedPathAgainstIgnoreList(src) && CheckCleanedPathAgainstIgnoreList(destPath) {
 			if !isExist(destPath) {
 				logrus.Debugf("Path %s ignored, but not exists", destPath)
 				return nil
@@ -979,7 +1014,7 @@ func CopyOwnership(src string, destDir string, root string) error {
 			logrus.Debugf("Not copying ownership for %s, as it's ignored", destPath)
 			return nil
 		}
-		if CheckIgnoreList(destDir) && CheckIgnoreList(path) {
+		if CheckIgnoreList(destDir) && CheckCleanedPathAgainstIgnoreList(path) {
 			if !isExist(path) {
 				logrus.Debugf("Path %s ignored, but not exists", path)
 				return nil
@@ -1000,12 +1035,40 @@ func CopyOwnership(src string, destDir string, root string) error {
 	})
 }
 
-func createParentDirectory(path string) error {
+func createParentDirectory(path string, uid int, gid int) error {
 	baseDir := filepath.Dir(path)
 	if info, err := os.Lstat(baseDir); os.IsNotExist(err) {
 		logrus.Tracef("BaseDir %s for file %s does not exist. Creating.", baseDir, path)
-		if err := os.MkdirAll(baseDir, 0755); err != nil {
-			return err
+
+		dir := baseDir
+		dirs := []string{baseDir}
+		for {
+			if dir == "/" || dir == "." || dir == "" {
+				break
+			}
+			dir = filepath.Dir(dir)
+			dirs = append(dirs, dir)
+		}
+
+		for i := len(dirs) - 1; i >= 0; i-- {
+			dir := dirs[i]
+
+			if _, err := os.Lstat(dir); os.IsNotExist(err) {
+				os.Mkdir(dir, 0o755)
+				if uid != DoNotChangeUID {
+					if gid != DoNotChangeGID {
+						os.Chown(dir, uid, gid)
+					} else {
+						return errors.New(fmt.Sprintf("UID=%d but GID=-1, i.e. it is not set for %s", uid, dir))
+					}
+				} else {
+					if gid != DoNotChangeGID {
+						return errors.New(fmt.Sprintf("GID=%d but UID=-1, i.e. it is not set for %s", gid, dir))
+					}
+				}
+			} else if err != nil {
+				return err
+			}
 		}
 	} else if IsSymlink(info) {
 		logrus.Infof("Destination cannot be a symlink %v", baseDir)
@@ -1017,14 +1080,12 @@ func createParentDirectory(path string) error {
 // InitIgnoreList will initialize the ignore list using:
 // - defaultIgnoreList
 // - mounted paths via DetectFilesystemIgnoreList()
-func InitIgnoreList(detectFilesystem bool) error {
+func InitIgnoreList() error {
 	logrus.Trace("Initializing ignore list")
 	ignorelist = append([]IgnoreListEntry{}, defaultIgnoreList...)
 
-	if detectFilesystem {
-		if err := DetectFilesystemIgnoreList(config.MountInfoPath); err != nil {
-			return errors.Wrap(err, "checking filesystem mount paths for ignore list")
-		}
+	if err := DetectFilesystemIgnoreList(config.MountInfoPath); err != nil {
+		return errors.Wrap(err, "checking filesystem mount paths for ignore list")
 	}
 
 	return nil
@@ -1118,7 +1179,7 @@ func GetFSInfoMap(dir string, existing map[string]os.FileInfo) (map[string]os.Fi
 	timer := timing.Start("Walking filesystem with Stat")
 	godirwalk.Walk(dir, &godirwalk.Options{
 		Callback: func(path string, ent *godirwalk.Dirent) error {
-			if CheckIgnoreList(path) {
+			if CheckCleanedPathAgainstIgnoreList(path) {
 				if IsDestDir(path) {
 					logrus.Tracef("Skipping paths under %s, as it is a ignored directory", path)
 					return filepath.SkipDir

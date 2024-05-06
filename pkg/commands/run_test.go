@@ -20,7 +20,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -130,7 +129,7 @@ Meow meow meow meow
 meow meow meow meow
 `
 	for _, name := range fileNames {
-		if err := ioutil.WriteFile(filepath.Join(dir, name), []byte(content), 0777); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0777); err != nil {
 			return nil, err
 		}
 	}
@@ -153,7 +152,7 @@ meow meow meow meow
 		if err := tw.WriteHeader(hdr); err != nil {
 			log.Fatal(err)
 		}
-		body, err := ioutil.ReadFile(path)
+		body, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
@@ -204,7 +203,7 @@ func Test_CachingRunCommand_ExecuteCommand(t *testing.T) {
 				extractedFiles: []string{"/foo.txt"},
 				contextFiles:   []string{"foo.txt"},
 			}
-			c.extractFn = func(_ string, _ *tar.Header, _ io.Reader) error {
+			c.extractFn = func(_ string, _ *tar.Header, _ string, _ io.Reader) error {
 				*tc.count++
 				return nil
 			}
@@ -217,7 +216,7 @@ func Test_CachingRunCommand_ExecuteCommand(t *testing.T) {
 				desctiption: "with no image",
 				expectErr:   true,
 			}
-			c.extractFn = func(_ string, _ *tar.Header, _ io.Reader) error {
+			c.extractFn = func(_ string, _ *tar.Header, _ string, _ io.Reader) error {
 				return nil
 			}
 			tc.command = c
@@ -228,7 +227,7 @@ func Test_CachingRunCommand_ExecuteCommand(t *testing.T) {
 				img: fakeImage{},
 			}
 
-			c.extractFn = func(_ string, _ *tar.Header, _ io.Reader) error {
+			c.extractFn = func(_ string, _ *tar.Header, _ string, _ io.Reader) error {
 				return nil
 			}
 
@@ -246,7 +245,7 @@ func Test_CachingRunCommand_ExecuteCommand(t *testing.T) {
 					},
 				},
 			}
-			c.extractFn = func(_ string, _ *tar.Header, _ io.Reader) error {
+			c.extractFn = func(_ string, _ *tar.Header, _ string, _ io.Reader) error {
 				return nil
 			}
 			tc := testCase{
