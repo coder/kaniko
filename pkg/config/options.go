@@ -19,7 +19,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -88,8 +87,6 @@ type KanikoOptions struct {
 	IgnoreVarRun             bool
 	SkipUnusedStages         bool
 	RunV2                    bool
-	RunStdout                io.Writer
-	RunStderr                io.Writer
 	CacheCopyLayers          bool
 	CacheRunLayers           bool
 	ForceBuildMetadata       bool

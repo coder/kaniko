@@ -18,7 +18,6 @@ package commands
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -34,15 +33,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type RunOutput struct {
-	Stdout io.Writer
-	Stderr io.Writer
-}
-
 type RunCommand struct {
 	BaseCommand
 	cmd      *instructions.RunCommand
-	output   *RunOutput
 	shdCache bool
 }
 
@@ -56,19 +49,10 @@ func (r *RunCommand) IsArgsEnvsRequiredInCache() bool {
 }
 
 func (r *RunCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
-	return runCommandInExec(config, buildArgs, r.cmd, r.output)
+	return runCommandInExec(config, buildArgs, r.cmd)
 }
 
-func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput) error {
-	if output == nil {
-		output = &RunOutput{}
-	}
-	if output.Stdout == nil {
-		output.Stdout = os.Stdout
-	}
-	if output.Stderr == nil {
-		output.Stderr = os.Stderr
-	}
+func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand) error {
 	var newCommand []string
 	if cmdRun.PrependShell {
 		// This is the default shell on Linux
@@ -105,8 +89,8 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	cmd := exec.Command(newCommand[0], newCommand[1:]...)
 
 	cmd.Dir = setWorkDirIfExists(config.WorkingDir)
-	cmd.Stdout = output.Stdout
-	cmd.Stderr = output.Stderr
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	replacementEnvs := buildArgs.ReplacementEnvs(config.Env)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
