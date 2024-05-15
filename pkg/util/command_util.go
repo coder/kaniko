@@ -354,7 +354,7 @@ Loop:
 
 func GetUserGroup(chownStr string, env []string) (int64, int64, error) {
 	if chownStr == "" {
-		return 0, 0, nil
+		return DoNotChangeUID, DoNotChangeGID, nil
 	}
 
 	chown, err := ResolveEnvironmentReplacement(chownStr, env, false)
