@@ -17,9 +17,9 @@ limitations under the License.
 package executor
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -53,11 +53,23 @@ type withUserAgent struct {
 
 // for testing
 var (
-	newRetry = transport.NewRetry
+	newRetry          = transport.NewRetry
+	DummyDestinations = []string{DummyDestination}
 )
 
 const (
 	UpstreamClientUaKey = "UPSTREAM_CLIENT_TYPE"
+	DummyDestination    = "docker.io/unset-repo/unset-image-name"
+)
+
+var (
+	// known tag immutability errors
+	errTagImmutable = []string{
+		// https://cloud.google.com/artifact-registry/docs/docker/troubleshoot#push
+		"The repository has enabled tag immutability",
+		// https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-tag-mutability.html
+		"cannot be overwritten because the repository is immutable",
+	}
 )
 
 func (w *withUserAgent) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -71,7 +83,7 @@ func (w *withUserAgent) RoundTrip(r *http.Request) (*http.Response, error) {
 
 // for testing
 var (
-	fs                        = afero.NewOsFs()
+	newOsFs                   = afero.NewOsFs()
 	checkRemotePushPermission = remote.CheckPushPermission
 )
 
@@ -80,7 +92,9 @@ var (
 func CheckPushPermissions(opts *config.KanikoOptions) error {
 	targets := opts.Destinations
 	// When no push and no push cache are set, we don't need to check permissions
-	if opts.NoPush && opts.NoPushCache {
+	if opts.SkipPushPermissionCheck {
+		targets = []string{}
+	} else if opts.NoPush && opts.NoPushCache {
 		targets = []string{}
 	} else if opts.NoPush && !opts.NoPushCache {
 		// When no push is set, we want to check permissions for the cache repo
@@ -132,6 +146,17 @@ func getDigest(image v1.Image) ([]byte, error) {
 }
 
 func writeDigestFile(path string, digestByteArray []byte) error {
+	if strings.HasPrefix(path, "https://") {
+		// Do a HTTP PUT to the URL; this could be a pre-signed URL to S3 or GCS or Azure
+		req, err := http.NewRequest("PUT", path, bytes.NewReader(digestByteArray)) //nolint:noctx
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "text/plain")
+		_, err = http.DefaultClient.Do(req)
+		return err
+	}
+
 	parentDir := filepath.Dir(path)
 	if _, err := os.Stat(parentDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(parentDir, 0700); err != nil {
@@ -140,14 +165,21 @@ func writeDigestFile(path string, digestByteArray []byte) error {
 		}
 		logrus.Tracef("Created directory %v", parentDir)
 	}
-	return ioutil.WriteFile(path, digestByteArray, 0644)
+	return os.WriteFile(path, digestByteArray, 0644)
 }
 
-// DoPush is responsible for pushing image to the destinations specified in opts
+// DoPush is responsible for pushing image to the destinations specified in opts.
+// A dummy destination would be set when --no-push is set to true and --tar-path
+// is not empty with empty --destinations.
 func DoPush(image v1.Image, opts *config.KanikoOptions) error {
 	t := timing.Start("Total Push Time")
 	var digestByteArray []byte
 	var builder strings.Builder
+
+	if !opts.NoPush && len(opts.Destinations) == 0 {
+		return errors.New("must provide at least one destination to push")
+	}
+
 	if opts.DigestFile != "" || opts.ImageNameDigestFile != "" || opts.ImageNameTagDigestFile != "" {
 		var err error
 		digestByteArray, err = getDigest(image)
@@ -170,6 +202,12 @@ func DoPush(image v1.Image, opts *config.KanikoOptions) error {
 		}
 		if err := path.AppendImage(image); err != nil {
 			return errors.Wrap(err, "appending image")
+		}
+	}
+
+	if opts.NoPush && len(opts.Destinations) == 0 {
+		if opts.TarPath != "" {
+			setDummyDestinations(opts)
 		}
 	}
 
@@ -207,10 +245,6 @@ func DoPush(image v1.Image, opts *config.KanikoOptions) error {
 
 	if opts.TarPath != "" {
 		tagToImage := map[name.Tag]v1.Image{}
-
-		if len(destRefs) == 0 {
-			return errors.New("must provide at least one destination when tarPath is specified")
-		}
 
 		for _, destRef := range destRefs {
 			tagToImage[destRef] = image
@@ -256,10 +290,23 @@ func DoPush(image v1.Image, opts *config.KanikoOptions) error {
 			if err != nil {
 				return err
 			}
+			digest := destRef.Context().Digest(dig.String())
 			if err := remote.Write(destRef, image, remote.WithAuth(pushAuth), remote.WithTransport(rt)); err != nil {
+				if !opts.PushIgnoreImmutableTagErrors {
+					return err
+				}
+
+				// check for known "tag immutable" errors
+				errStr := err.Error()
+				for _, candidate := range errTagImmutable {
+					if strings.Contains(errStr, candidate) {
+						logrus.Infof("Immutable tag error ignored for %s", digest)
+						return nil
+					}
+				}
 				return err
 			}
-			logrus.Infof("Pushed %s", destRef.Context().Digest(dig.String()))
+			logrus.Infof("Pushed %s", digest)
 			return nil
 		}
 
@@ -276,7 +323,7 @@ func writeImageOutputs(image v1.Image, destRefs []name.Tag) error {
 	if dir == "" {
 		return nil
 	}
-	f, err := fs.Create(filepath.Join(dir, "images"))
+	f, err := newOsFs.Create(filepath.Join(dir, "images"))
 	if err != nil {
 		return err
 	}
@@ -361,4 +408,10 @@ func pushLayerToCache(opts *config.KanikoOptions, cacheKey string, tarPath strin
 		cacheOpts.NoPush = true
 	}
 	return DoPush(empty, &cacheOpts)
+}
+
+// setDummyDestinations sets the dummy destinations required to generate new
+// tag names for tarPath in DoPush.
+func setDummyDestinations(opts *config.KanikoOptions) {
+	opts.Destinations = DummyDestinations
 }

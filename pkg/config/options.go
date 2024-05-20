@@ -33,16 +33,20 @@ type CacheOptions struct {
 
 // RegistryOptions are all the options related to the registries, set by command line arguments.
 type RegistryOptions struct {
+	RegistryMaps                 multiKeyMultiValueArg
 	RegistryMirrors              multiArg
 	InsecureRegistries           multiArg
 	SkipTLSVerifyRegistries      multiArg
 	RegistriesCertificates       keyValueArg
 	RegistriesClientCertificates keyValueArg
+	SkipDefaultRegistryFallback  bool
 	Insecure                     bool
 	SkipTLSVerify                bool
 	InsecurePull                 bool
 	SkipTLSVerifyPull            bool
+	PushIgnoreImmutableTagErrors bool
 	PushRetry                    int
+	ImageDownloadRetry           int
 }
 
 // KanikoOptions are options that are set by command line arguments
@@ -90,14 +94,15 @@ type KanikoOptions struct {
 	CacheRunLayers           bool
 	ForceBuildMetadata       bool
 	InitialFSUnpacked        bool
-
-	ForceUnpack bool
+	ForceUnpack              bool
+	SkipPushPermissionCheck  bool
 }
 
 type KanikoGitOptions struct {
 	Branch            string
 	SingleBranch      bool
 	RecurseSubmodules bool
+	InsecureSkipTLS   bool
 }
 
 var ErrInvalidGitFlag = errors.New("invalid git flag, must be in the key=value format")
@@ -130,6 +135,12 @@ func (k *KanikoGitOptions) Set(s string) error {
 			return err
 		}
 		k.RecurseSubmodules = v
+	case "insecure-skip-tls":
+		v, err := strconv.ParseBool(parts[1])
+		if err != nil {
+			return err
+		}
+		k.InsecureSkipTLS = v
 	}
 	return nil
 }

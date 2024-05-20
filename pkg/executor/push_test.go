@@ -19,8 +19,9 @@ package executor
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,9 +80,9 @@ func TestWriteImageOutputs(t *testing.T) {
 `, d, d),
 	}} {
 		t.Run(c.desc, func(t *testing.T) {
-			fs = afero.NewMemMapFs()
+			newOsFs = afero.NewMemMapFs()
 			if c.want == "" {
-				fs = afero.NewReadOnlyFs(fs) // No files should be written.
+				newOsFs = afero.NewReadOnlyFs(newOsFs) // No files should be written.
 			}
 
 			os.Setenv("BUILDER_OUTPUT", c.env)
@@ -93,7 +94,7 @@ func TestWriteImageOutputs(t *testing.T) {
 				return
 			}
 
-			b, err := afero.ReadFile(fs, filepath.Join(c.env, "images"))
+			b, err := afero.ReadFile(newOsFs, filepath.Join(c.env, "images"))
 			if err != nil {
 				t.Fatalf("ReadFile: %v", err)
 			}
@@ -134,7 +135,7 @@ func TestHeaderAdded(t *testing.T) {
 			resp, err := rt.RoundTrip(req)
 			testutil.CheckError(t, false, err)
 			defer resp.Body.Close()
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			testutil.CheckErrorAndDeepEqual(t, false, err, test.expected, string(body))
 		})
 	}
@@ -146,7 +147,7 @@ type mockRoundTripper struct {
 
 func (m *mockRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	ua := r.UserAgent()
-	return &http.Response{Body: ioutil.NopCloser(bytes.NewBufferString(ua))}, nil
+	return &http.Response{Body: io.NopCloser(bytes.NewBufferString(ua))}, nil
 }
 
 func TestOCILayoutPath(t *testing.T) {
@@ -216,10 +217,72 @@ func TestImageNameDigestFile(t *testing.T) {
 
 	want := []byte("gcr.io/foo/bar@" + digest.String() + "\nindex.docker.io/bob/image@" + digest.String() + "\n")
 
-	got, err := ioutil.ReadFile("tmpFile")
+	got, err := os.ReadFile("tmpFile")
 
 	testutil.CheckErrorAndDeepEqual(t, false, err, want, got)
 
+}
+
+func TestDoPushWithOpts(t *testing.T) {
+	tarPath := "image.tar"
+
+	for _, tc := range []struct {
+		name        string
+		opts        config.KanikoOptions
+		expectedErr bool
+	}{
+		{
+			name: "no push with tarPath without destinations",
+			opts: config.KanikoOptions{
+				NoPush:  true,
+				TarPath: tarPath,
+			},
+			expectedErr: false,
+		}, {
+			name: "no push with tarPath with destinations",
+			opts: config.KanikoOptions{
+				NoPush:       true,
+				TarPath:      tarPath,
+				Destinations: []string{"image"},
+			},
+			expectedErr: false,
+		}, {
+			name: "no push with tarPath with destinations empty",
+			opts: config.KanikoOptions{
+				NoPush:       true,
+				TarPath:      tarPath,
+				Destinations: []string{},
+			},
+			expectedErr: false,
+		}, {
+			name: "tarPath with destinations empty",
+			opts: config.KanikoOptions{
+				NoPush:       false,
+				TarPath:      tarPath,
+				Destinations: []string{},
+			},
+			expectedErr: true,
+		}} {
+		t.Run(tc.name, func(t *testing.T) {
+			image, err := random.Image(1024, 4)
+			if err != nil {
+				t.Fatalf("could not create image: %s", err)
+			}
+			defer os.Remove("image.tar")
+
+			err = DoPush(image, &tc.opts)
+			if err != nil {
+				if !tc.expectedErr {
+					t.Errorf("unexpected error with opts: could not push image: %s", err)
+				}
+			} else {
+				if tc.expectedErr {
+					t.Error("expected error with opts not found")
+				}
+			}
+
+		})
+	}
 }
 
 func TestImageNameTagDigestFile(t *testing.T) {
@@ -247,7 +310,7 @@ func TestImageNameTagDigestFile(t *testing.T) {
 
 	want := []byte("gcr.io/foo/bar:123@" + digest.String() + "\nindex.docker.io/bob/image:latest@" + digest.String() + "\n")
 
-	got, err := ioutil.ReadFile("tmpFile")
+	got, err := os.ReadFile("tmpFile")
 
 	testutil.CheckErrorAndDeepEqual(t, false, err, want, got)
 }
@@ -331,7 +394,7 @@ func TestCheckPushPermissions(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
 			resetCalledCount()
-			fs = afero.NewMemMapFs()
+			newOsFs = afero.NewMemMapFs()
 			opts := config.KanikoOptions{
 				CacheRepo:    test.cacheRepo,
 				Destinations: test.destinations,
@@ -339,8 +402,47 @@ func TestCheckPushPermissions(t *testing.T) {
 				NoPushCache:  test.noPushCache,
 			}
 			if test.existingConfig {
-				afero.WriteFile(fs, util.DockerConfLocation(), []byte(""), os.FileMode(0644))
-				defer fs.Remove(util.DockerConfLocation())
+				afero.WriteFile(newOsFs, util.DockerConfLocation(), []byte(""), os.FileMode(0644))
+				defer newOsFs.Remove(util.DockerConfLocation())
+			}
+			CheckPushPermissions(&opts)
+			if checkPushPermsCallCount != test.checkPushPermsExpectedCallCount {
+				t.Errorf("expected check push permissions call count to be %d but it was %d", test.checkPushPermsExpectedCallCount, checkPushPermsCallCount)
+			}
+		})
+	}
+}
+
+func TestSkipPushPermission(t *testing.T) {
+	tests := []struct {
+		description                     string
+		cacheRepo                       string
+		checkPushPermsExpectedCallCount int
+		destinations                    []string
+		existingConfig                  bool
+		noPush                          bool
+		noPushCache                     bool
+		skipPushPermission              bool
+	}{
+		{description: "skip push permission enabled", destinations: []string{"test.io/skip"}, checkPushPermsExpectedCallCount: 0, skipPushPermission: true},
+		{description: "skip push permission disabled", destinations: []string{"test.io/push"}, checkPushPermsExpectedCallCount: 1, skipPushPermission: false},
+	}
+
+	checkRemotePushPermission = fakeCheckPushPermission
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			resetCalledCount()
+			newOsFs = afero.NewMemMapFs()
+			opts := config.KanikoOptions{
+				CacheRepo:               test.cacheRepo,
+				Destinations:            test.destinations,
+				NoPush:                  test.noPush,
+				NoPushCache:             test.noPushCache,
+				SkipPushPermissionCheck: test.skipPushPermission,
+			}
+			if test.existingConfig {
+				afero.WriteFile(newOsFs, util.DockerConfLocation(), []byte(""), os.FileMode(0644))
+				defer newOsFs.Remove(util.DockerConfLocation())
 			}
 			CheckPushPermissions(&opts)
 			if checkPushPermsCallCount != test.checkPushPermsExpectedCallCount {
@@ -372,6 +474,34 @@ func TestWriteDigestFile(t *testing.T) {
 		err := writeDigestFile(tmpDir+"/df", []byte("test"))
 		if err != nil {
 			t.Errorf("expected file to be written successfully, but got error: %v", err)
+		}
+	})
+
+	t.Run("https PUT OK", func(t *testing.T) {
+		var uploadedContent []byte
+
+		// Start a test server that checks the PUT request.
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPut {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			uploadedContent, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+
+		// Temporarily replace the default client with the test server client to avoid TLS verification errors.
+		oldClient := http.DefaultClient
+		defer func() { http.DefaultClient = oldClient }()
+		http.DefaultClient = server.Client()
+
+		err := writeDigestFile(server.URL+"/df?sig=1234", []byte("test"))
+		if err != nil {
+			t.Fatalf("expected file to be written successfully, but got error: %v", err)
+		}
+		if string(uploadedContent) != "test" {
+			t.Errorf("expected uploaded content to be 'test', but got '%s'", uploadedContent)
 		}
 	})
 }

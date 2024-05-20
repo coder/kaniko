@@ -18,6 +18,7 @@ package util
 
 import (
 	"fmt"
+	"io/fs"
 	"os/user"
 	"reflect"
 	"sort"
@@ -227,6 +228,12 @@ var urlDestFilepathTests = []struct {
 		expectedDest: "/test",
 	},
 	{
+		url:          "https://something/something.tar?foo=bar",
+		cwd:          "/cwd",
+		dest:         "/dir/",
+		expectedDest: "/dir/something.tar",
+	},
+	{
 		url:          "https://something/something",
 		cwd:          "/test",
 		dest:         "/dest/",
@@ -302,7 +309,8 @@ var updateConfigEnvTests = []struct {
 			{
 				Key:   "foo",
 				Value: "baz",
-			}},
+			},
+		},
 		config:          &v1.Config{},
 		replacementEnvs: []string{},
 		expectedEnv:     []string{"key=var", "foo=baz"},
@@ -320,7 +328,8 @@ var updateConfigEnvTests = []struct {
 			{
 				Key:   "foo",
 				Value: "$argarg",
-			}},
+			},
+		},
 		config:          &v1.Config{},
 		replacementEnvs: []string{"var=/test/with'chars'/", "not=used", "argarg=\"a\"b\""},
 		expectedEnv:     []string{"key=/var/run", "env=/test/with'chars'/", "foo=\"a\"b\""},
@@ -334,7 +343,8 @@ var updateConfigEnvTests = []struct {
 			{
 				Key:   "bob",
 				Value: "cool",
-			}},
+			},
+		},
 		config:          &v1.Config{Env: []string{"bob=used", "more=test"}},
 		replacementEnvs: []string{},
 		expectedEnv:     []string{"bob=cool", "more=test", "alice=nice"},
@@ -526,7 +536,7 @@ func TestGetUserGroup(t *testing.T) {
 		description  string
 		chown        string
 		env          []string
-		mockIDGetter func(userStr string, groupStr string, fallbackToUID bool) (uint32, uint32, error)
+		mockIDGetter func(userStr string, groupStr string) (uint32, uint32, error)
 		// needed, in case uid is a valid number, but group is a name
 		mockGroupIDGetter func(groupStr string) (*user.Group, error)
 		expectedU         int64
@@ -537,7 +547,7 @@ func TestGetUserGroup(t *testing.T) {
 			description: "non empty chown",
 			chown:       "some:some",
 			env:         []string{},
-			mockIDGetter: func(string, string, bool) (uint32, uint32, error) {
+			mockIDGetter: func(string, string) (uint32, uint32, error) {
 				return 100, 1000, nil
 			},
 			expectedU: 100,
@@ -547,7 +557,7 @@ func TestGetUserGroup(t *testing.T) {
 			description: "non empty chown with env replacement",
 			chown:       "some:$foo",
 			env:         []string{"foo=key"},
-			mockIDGetter: func(userStr string, groupStr string, fallbackToUID bool) (uint32, uint32, error) {
+			mockIDGetter: func(userStr string, groupStr string) (uint32, uint32, error) {
 				if userStr == "some" && groupStr == "key" {
 					return 10, 100, nil
 				}
@@ -558,7 +568,7 @@ func TestGetUserGroup(t *testing.T) {
 		},
 		{
 			description: "empty chown string",
-			mockIDGetter: func(string, string, bool) (uint32, uint32, error) {
+			mockIDGetter: func(string, string) (uint32, uint32, error) {
 				return 0, 0, fmt.Errorf("should not be called")
 			},
 			expectedU: 0,
@@ -575,6 +585,43 @@ func TestGetUserGroup(t *testing.T) {
 			uid, gid, err := GetUserGroup(tc.chown, tc.env)
 			testutil.CheckErrorAndDeepEqual(t, tc.shdErr, err, uid, tc.expectedU)
 			testutil.CheckErrorAndDeepEqual(t, tc.shdErr, err, gid, tc.expectedG)
+		})
+	}
+}
+
+func TestGetChmod(t *testing.T) {
+	tests := []struct {
+		description string
+		chmod       string
+		env         []string
+		expected    fs.FileMode
+		shdErr      bool
+	}{
+		{
+			description: "non empty chmod",
+			chmod:       "0755",
+			env:         []string{},
+			expected:    fs.FileMode(0o755),
+		},
+		{
+			description: "non empty chmod with env replacement",
+			chmod:       "$foo",
+			env:         []string{"foo=0750"},
+			expected:    fs.FileMode(0o750),
+		},
+		{
+			description: "empty chmod string",
+			expected:    fs.FileMode(0o600),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.description, func(t *testing.T) {
+			defaultChmod := fs.FileMode(0o600)
+			chmod, useDefault, err := GetChmod(tc.chmod, tc.env)
+			if useDefault {
+				chmod = defaultChmod
+			}
+			testutil.CheckErrorAndDeepEqual(t, tc.shdErr, err, tc.expected, chmod)
 		})
 	}
 }
@@ -638,8 +685,7 @@ func Test_GetUIDAndGIDFromString(t *testing.T) {
 	currentUser := testutil.GetCurrentUser(t)
 
 	type args struct {
-		userGroupStr  string
-		fallbackToUID bool
+		userGroupStr string
 	}
 
 	type expected struct {
@@ -705,18 +751,7 @@ func Test_GetUIDAndGIDFromString(t *testing.T) {
 			},
 			expected: expected{
 				userID:  1001,
-				groupID: uint32(currentUserGID),
-			},
-		},
-		{
-			testname: "uid and non existing group-name with fallbackToUID",
-			args: args{
-				userGroupStr:  fmt.Sprintf("%d:%s", 1001, "hello-world-group"),
-				fallbackToUID: true,
-			},
-			expected: expected{
-				userID:  1001,
-				groupID: 1001,
+				groupID: expectedCurrentUser.groupID,
 			},
 		},
 		{
@@ -737,18 +772,9 @@ func Test_GetUIDAndGIDFromString(t *testing.T) {
 			},
 		},
 		{
-			testname: "only uid and fallback is false",
+			testname: "only uid",
 			args: args{
-				userGroupStr:  fmt.Sprintf("%d", currentUserUID),
-				fallbackToUID: false,
-			},
-			wantErr: true,
-		},
-		{
-			testname: "only uid and fallback is true",
-			args: args{
-				userGroupStr:  fmt.Sprintf("%d", currentUserUID),
-				fallbackToUID: true,
+				userGroupStr: fmt.Sprintf("%d", currentUserUID),
 			},
 			expected: expected{
 				userID:  expectedCurrentUser.userID,
@@ -764,7 +790,7 @@ func Test_GetUIDAndGIDFromString(t *testing.T) {
 		},
 	}
 	for _, tt := range testCases {
-		uid, gid, err := getUIDAndGIDFromString(tt.args.userGroupStr, tt.args.fallbackToUID)
+		uid, gid, err := getUIDAndGIDFromString(tt.args.userGroupStr)
 		testutil.CheckError(t, tt.wantErr, err)
 		if uid != tt.expected.userID || gid != tt.expected.groupID {
 			t.Errorf("%v failed. Could not correctly decode %s to uid/gid %d:%d. Result: %d:%d",
@@ -821,7 +847,6 @@ func TestLookupUser(t *testing.T) {
 			testutil.CheckErrorAndDeepEqual(t, tt.wantErr, err, tt.expected, got)
 		})
 	}
-
 }
 
 func TestIsSrcRemoteFileURL(t *testing.T) {

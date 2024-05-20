@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,9 +147,9 @@ const (
 	securityCapabilityXattr = "security.capability"
 )
 
-// writeSecurityXattrToTarHeader writes security.capability
+// writeSecurityXattrToTarFile writes security.capability
 // xattrs from a tar header to filesystem
-func writeSecurityXattrToToFile(path string, hdr *tar.Header) error {
+func writeSecurityXattrToTarFile(path string, hdr *tar.Header) error {
 	if hdr.Xattrs == nil {
 		return nil
 	}
@@ -236,7 +235,12 @@ func UnpackLocalTarArchive(path, dest string) ([]string, error) {
 		}
 		defer file.Close()
 		if compressionLevel == archive.Gzip {
-			return nil, UnpackCompressedTar(path, dest)
+			gzr, err := gzip.NewReader(file)
+			if err != nil {
+				return nil, err
+			}
+			defer gzr.Close()
+			return UnTar(gzr, dest)
 		} else if compressionLevel == archive.Bzip2 {
 			bzr := bzip2.NewReader(file)
 			return UnTar(bzr, dest)
@@ -266,7 +270,7 @@ func fileIsCompressedTar(src string) (bool, archive.Compression) {
 		return false, -1
 	}
 	defer r.Close()
-	buf, err := ioutil.ReadAll(r)
+	buf, err := io.ReadAll(r)
 	if err != nil {
 		return false, -1
 	}
