@@ -171,18 +171,22 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 	}
 
 	var totalSize int64
-	var layerSizes []int64
-	for _, l := range layers {
+	layerSizes := make([]int64, 0, len(layers))
+	for i, l := range layers {
 		layerSize, err := l.Size()
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, fmt.Sprintf("error checking layer size %d", i))
 		}
 		layerSizes = append(layerSizes, layerSize)
 		totalSize += layerSize
 	}
+	printExtractionProgress := cfg.printExtractionProgress
+	if totalSize == 0 {
+		printExtractionProgress = false
+	}
 
-	if cfg.printExtractionProgress {
-		logrus.Infof("Extracting image layers to %s (%d bytes)", root, totalSize)
+	if printExtractionProgress {
+		logrus.Infof("Extracting image layers to %s", root)
 	}
 
 	extractedFiles := []string{}
@@ -194,8 +198,9 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 			logrus.Tracef("Extracting layer %d", i)
 		}
 
-		if cfg.printExtractionProgress {
-			logrus.Infof("Extracting layer %d %d/%d (%d%%)", i, extractedBytes, totalSize, int(math.Round(float64(extractedBytes)/float64(totalSize)*100)))
+		progressPerc := float64(extractedBytes) / float64(totalSize) * 100
+		if printExtractionProgress {
+			logrus.Infof("Extracting layer %d (%.1f%%)", i, progressPerc)
 		}
 
 		r, err := l.Uncompressed()
@@ -204,12 +209,12 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 		}
 		defer r.Close()
 
-		if cfg.printExtractionProgress {
+		if printExtractionProgress {
 			r = &printAfterReader{
 				ReadCloser: r,
 				after:      time.Second,
-				print: func(int64) {
-					logrus.Infof("Extracting layer %d...", i)
+				print: func(n int) {
+					logrus.Infof("Extracting layer %d (%.1f%%) %s", i, progressPerc, strings.Repeat(".", n))
 				},
 			}
 		}
@@ -266,8 +271,8 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 		extractedBytes += layerSizes[i]
 	}
 
-	if cfg.printExtractionProgress {
-		logrus.Infof("Extraction complete %d/%d (%d%%)", extractedBytes, totalSize, int(math.Round(float64(extractedBytes)/float64(totalSize)*100)))
+	if printExtractionProgress {
+		logrus.Infof("Extraction complete")
 	}
 
 	return extractedFiles, nil
@@ -275,20 +280,20 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 
 type printAfterReader struct {
 	io.ReadCloser
-	n     int64
 	t     time.Time
 	after time.Duration
-	print func(int64)
+	count int
+	print func(int)
 }
 
 func (r *printAfterReader) Read(p []byte) (n int, err error) {
 	n, err = r.ReadCloser.Read(p)
-	r.n += int64(n)
 	if r.t.IsZero() {
 		r.t = time.Now()
 	}
 	if time.Since(r.t) >= r.after {
-		r.print(r.n)
+		r.count++
+		r.print(r.count)
 		r.t = time.Now()
 	}
 	return
