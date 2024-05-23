@@ -193,14 +193,14 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 	var extractedBytes int64
 	for i, l := range layers {
 		if mediaType, err := l.MediaType(); err == nil {
-			logrus.Tracef("Extracting layer %d of media type %s", i, mediaType)
+			logrus.Tracef("Extracting layer %d/%d of media type %s", i+1, len(layers), mediaType)
 		} else {
-			logrus.Tracef("Extracting layer %d", i)
+			logrus.Tracef("Extracting layer %d/%d", i+1, len(layers))
 		}
 
 		progressPerc := float64(extractedBytes) / float64(totalSize) * 100
 		if printExtractionProgress {
-			logrus.Infof("Extracting layer %d (%.1f%%)", i, progressPerc)
+			logrus.Infof("Extracting layer %d/%d (%.1f%%)", i+1, len(layers), progressPerc)
 		}
 
 		r, err := l.Uncompressed()
@@ -214,7 +214,7 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 				ReadCloser: r,
 				after:      time.Second,
 				print: func(n int) {
-					logrus.Infof("Extracting layer %d (%.1f%%) %s", i, progressPerc, strings.Repeat(".", n))
+					logrus.Infof("Extracting layer %d/%d (%.1f%%) %s", i+1, len(layers), progressPerc, strings.Repeat(".", n))
 				},
 			}
 		}
