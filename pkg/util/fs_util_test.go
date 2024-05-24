@@ -1067,6 +1067,7 @@ func Test_GetFSFromLayers_with_whiteouts_include_whiteout_enabled(t *testing.T) 
 	f(expectedFiles, tw)
 
 	mockLayer := mockv1.NewMockLayer(ctrl)
+	mockLayer.EXPECT().Size().Return(int64(buf.Len()), nil)
 	mockLayer.EXPECT().MediaType().Return(types.OCILayer, nil)
 
 	rc := io.NopCloser(buf)
@@ -1082,6 +1083,7 @@ func Test_GetFSFromLayers_with_whiteouts_include_whiteout_enabled(t *testing.T) 
 	f(secondLayerFiles, tw)
 
 	mockLayer2 := mockv1.NewMockLayer(ctrl)
+	mockLayer2.EXPECT().Size().Return(int64(buf.Len()), nil)
 	mockLayer2.EXPECT().MediaType().Return(types.OCILayer, nil)
 
 	rc = io.NopCloser(buf)
@@ -1175,6 +1177,7 @@ func Test_GetFSFromLayers_with_whiteouts_include_whiteout_disabled(t *testing.T)
 	f(expectedFiles, tw)
 
 	mockLayer := mockv1.NewMockLayer(ctrl)
+	mockLayer.EXPECT().Size().Return(int64(buf.Len()), nil)
 	mockLayer.EXPECT().MediaType().Return(types.OCILayer, nil)
 	layerFiles := []string{
 		filepath.Join(root, "foobar"),
@@ -1197,6 +1200,7 @@ func Test_GetFSFromLayers_with_whiteouts_include_whiteout_disabled(t *testing.T)
 	f(secondLayerFiles, tw)
 
 	mockLayer2 := mockv1.NewMockLayer(ctrl)
+	mockLayer2.EXPECT().Size().Return(int64(buf.Len()), nil)
 	mockLayer2.EXPECT().MediaType().Return(types.OCILayer, nil)
 
 	rc = io.NopCloser(buf)
@@ -1280,6 +1284,7 @@ func Test_GetFSFromLayers_ignorelist(t *testing.T) {
 	f(expectedFiles, tw)
 
 	mockLayer := mockv1.NewMockLayer(ctrl)
+	mockLayer.EXPECT().Size().Return(int64(buf.Len()), nil)
 	mockLayer.EXPECT().MediaType().Return(types.OCILayer, nil)
 	layerFiles := []string{
 		filepath.Join(root, ".wh.testdir"),
@@ -1344,6 +1349,8 @@ func Test_GetFSFromLayers_ignorelist(t *testing.T) {
 	tw = tar.NewWriter(buf)
 
 	f(layerFiles, tw)
+
+	mockLayer.EXPECT().Size().Return(int64(buf.Len()), nil)
 
 	rc = io.NopCloser(buf)
 	mockLayer.EXPECT().Uncompressed().Return(rc, nil)
@@ -1410,6 +1417,7 @@ func Test_GetFSFromLayers(t *testing.T) {
 	}
 
 	mockLayer := mockv1.NewMockLayer(ctrl)
+	mockLayer.EXPECT().Size().Return(int64(buf.Len()), nil)
 	mockLayer.EXPECT().MediaType().Return(types.OCILayer, nil)
 
 	rc := io.NopCloser(buf)

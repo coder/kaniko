@@ -332,7 +332,7 @@ func (s *stageBuilder) build() error {
 		t := timing.Start("FS Unpacking")
 
 		retryFunc := func() error {
-			_, err := getFSFromImage(config.RootDir, s.image, util.ExtractFile)
+			_, err := getFSFromImage(config.RootDir, s.image, util.ExtractFile, s.opts.ImageFSExtractProgress)
 			return err
 		}
 
@@ -939,7 +939,7 @@ func fetchExtraStages(stages []config.KanikoStage, opts *config.KanikoOptions) e
 			if err := saveStageAsTarball(c.From, sourceImage); err != nil {
 				return err
 			}
-			if err := extractImageToDependencyDir(c.From, sourceImage); err != nil {
+			if err := extractImageToDependencyDir(c.From, sourceImage, opts.ImageFSExtractProgress); err != nil {
 				return err
 			}
 		}
@@ -960,7 +960,7 @@ func fromPreviousStage(copyCommand *instructions.CopyCommand, previousStageNames
 	return false
 }
 
-func extractImageToDependencyDir(name string, image v1.Image) error {
+func extractImageToDependencyDir(name string, image v1.Image, extractionProgress bool) error {
 	t := timing.Start("Extracting Image to Dependency Dir")
 	defer timing.DefaultRun.Stop(t)
 	dependencyDir := filepath.Join(config.KanikoDir, name)
@@ -968,7 +968,7 @@ func extractImageToDependencyDir(name string, image v1.Image) error {
 		return err
 	}
 	logrus.Debugf("Trying to extract to %s", dependencyDir)
-	_, err := util.GetFSFromImage(dependencyDir, image, util.ExtractFile)
+	_, err := util.GetFSFromImage(dependencyDir, image, util.ExtractFile, extractionProgress)
 	return err
 }
 

@@ -77,6 +77,7 @@ type KanikoOptions struct {
 	OCILayoutPath            string
 	Compression              Compression
 	CompressionLevel         int
+	ImageFSExtractProgress   bool
 	ImageFSExtractRetry      int
 	SingleSnapshot           bool
 	Reproducible             bool

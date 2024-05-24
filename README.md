@@ -1143,6 +1143,11 @@ Ignore /var/run when taking image snapshot. Set it to false to preserve
 Set this flag as `--ignore-path=<path>` to ignore path when taking an image
 snapshot. Set it multiple times for multiple ignore paths.
 
+#### Flag `--image-fs-extract-progres`
+
+Set this flag to show the progress of extracting an image filesystem. Defaults
+to `false`.
+
 #### Flag `--image-fs-extract-retry`
 
 Set this flag to the number of retries that should happen for the extracting an
