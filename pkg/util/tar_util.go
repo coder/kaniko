@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/docker/docker/pkg/archive"
@@ -39,6 +40,7 @@ import (
 type Tar struct {
 	hardlinks map[uint64]string
 	w         *tar.Writer
+	canonical bool
 }
 
 // NewTar will create an instance of Tar that can write files to the writer at f.
@@ -47,6 +49,17 @@ func NewTar(f io.Writer) Tar {
 	return Tar{
 		w:         w,
 		hardlinks: map[uint64]string{},
+	}
+}
+
+// NewCanonicalTar will create an instance of Tar that can write files to the
+// writer at f, ignoring timestamps to produce a canonical archive.
+func NewCanonicalTar(f io.Writer) Tar {
+	w := tar.NewWriter(f)
+	return Tar{
+		w:         w,
+		hardlinks: map[uint64]string{},
+		canonical: true,
 	}
 }
 
@@ -96,6 +109,16 @@ func (t *Tar) AddFileToTar(p string) error {
 	hdr, err := tar.FileInfoHeader(i, linkDst)
 	if err != nil {
 		return err
+	}
+	if t.canonical {
+		ct := time.Time{}
+		hdr.ModTime = ct
+
+		// PAX and GNU Format support additional timestamps in the header
+		if hdr.Format == tar.FormatPAX || hdr.Format == tar.FormatGNU {
+			hdr.AccessTime = ct
+			hdr.ChangeTime = ct
+		}
 	}
 	err = readSecurityXattrToTarHeader(p, hdr)
 	if err != nil {
