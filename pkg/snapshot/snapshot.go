@@ -42,11 +42,18 @@ type Snapshotter struct {
 	l          *LayeredMap
 	directory  string
 	ignorelist []util.IgnoreListEntry
+	canonical  bool
 }
 
 // NewSnapshotter creates a new snapshotter rooted at d
 func NewSnapshotter(l *LayeredMap, d string) *Snapshotter {
 	return &Snapshotter{l: l, directory: d, ignorelist: util.IgnoreList()}
+}
+
+// NewCanonicalSnapshotter creates a new snapshotter rooted at d that produces
+// reproducible snapshots.
+func NewCanonicalSnapshotter(l *LayeredMap, d string) *Snapshotter {
+	return &Snapshotter{l: l, directory: d, ignorelist: util.IgnoreList(), canonical: true}
 }
 
 // Init initializes a new snapshotter
@@ -112,7 +119,12 @@ func (s *Snapshotter) TakeSnapshot(files []string, shdCheckDelete bool, forceBui
 		sort.Strings(filesToWhiteout)
 	}
 
-	t := util.NewTar(f)
+	var t util.Tar
+	if !s.canonical {
+		t = util.NewTar(f)
+	} else {
+		t = util.NewCanonicalTar(f)
+	}
 	defer t.Close()
 	if err := writeToTar(t, filesToAdd, filesToWhiteout); err != nil {
 		return "", err
@@ -128,7 +140,12 @@ func (s *Snapshotter) TakeSnapshotFS() (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	t := util.NewTar(f)
+	var t util.Tar
+	if !s.canonical {
+		t = util.NewTar(f)
+	} else {
+		t = util.NewCanonicalTar(f)
+	}
 	defer t.Close()
 
 	filesToAdd, filesToWhiteOut, err := s.scanFullFilesystem()

@@ -16,7 +16,10 @@ limitations under the License.
 
 package commands
 
-import v1 "github.com/google/go-containerregistry/pkg/v1"
+import (
+	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+)
 
 type Cached interface {
 	Layer() v1.Layer
@@ -28,4 +31,8 @@ type caching struct {
 
 func (c caching) Layer() v1.Layer {
 	return c.layer
+}
+
+type FakeExecuteCommand interface {
+	FakeExecuteCommand(*v1.Config, *dockerfile.BuildArgs) error
 }
