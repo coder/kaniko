@@ -923,7 +923,7 @@ func Test_stageBuilder_build(t *testing.T) {
 		config             *v1.ConfigFile
 		stage              config.KanikoStage
 		crossStageDeps     map[int][]string
-		mockGetFSFromImage func(root string, img v1.Image, extract util.ExtractFunction) ([]string, error)
+		mockGetFSFromImage func(root string, img v1.Image, extract util.ExtractFunction, extractionProgress bool) ([]string, error)
 		shouldInitSnapshot bool
 	}
 
@@ -1441,7 +1441,7 @@ RUN foobar
 			opts:           &config.KanikoOptions{InitialFSUnpacked: true},
 			stage:          config.KanikoStage{Index: 0},
 			crossStageDeps: map[int][]string{0: {"some-dep"}},
-			mockGetFSFromImage: func(root string, img v1.Image, extract util.ExtractFunction) ([]string, error) {
+			mockGetFSFromImage: func(root string, img v1.Image, extract util.ExtractFunction, extractionPogress bool) ([]string, error) {
 				return nil, fmt.Errorf("getFSFromImage shouldn't be called if fs is already unpacked")
 			},
 		},
