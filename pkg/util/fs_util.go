@@ -96,9 +96,8 @@ type FileContext struct {
 type ExtractFunction func(string, *tar.Header, string, io.Reader) error
 
 type FSConfig struct {
-	includeWhiteout         bool
-	printExtractionProgress bool
-	extractFunc             ExtractFunction
+	includeWhiteout bool
+	extractFunc     ExtractFunction
 }
 
 type FSOpt func(*FSConfig)
@@ -127,12 +126,6 @@ func IncludeWhiteout() FSOpt {
 	}
 }
 
-func PrintExtractionProgress() FSOpt {
-	return func(opts *FSConfig) {
-		opts.printExtractionProgress = true
-	}
-}
-
 func ExtractFunc(extractFunc ExtractFunction) FSOpt {
 	return func(opts *FSConfig) {
 		opts.extractFunc = extractFunc
@@ -151,7 +144,7 @@ func GetFSFromImage(root string, img v1.Image, extract ExtractFunction) ([]strin
 		return nil, err
 	}
 
-	return GetFSFromLayers(root, layers, ExtractFunc(extract), PrintExtractionProgress())
+	return GetFSFromLayers(root, layers, ExtractFunc(extract))
 }
 
 func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, error) {
@@ -170,37 +163,12 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 		return nil, errors.New("must supply an extract function")
 	}
 
-	var totalSize int64
-	layerSizes := make([]int64, 0, len(layers))
-	for i, l := range layers {
-		layerSize, err := l.Size()
-		if err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("error checking layer size %d", i))
-		}
-		layerSizes = append(layerSizes, layerSize)
-		totalSize += layerSize
-	}
-	printExtractionProgress := cfg.printExtractionProgress
-	if totalSize == 0 {
-		printExtractionProgress = false
-	}
-
-	if printExtractionProgress {
-		logrus.Infof("Extracting image layers to %s", root)
-	}
-
 	extractedFiles := []string{}
-	var extractedBytes int64
 	for i, l := range layers {
 		if mediaType, err := l.MediaType(); err == nil {
-			logrus.Tracef("Extracting layer %d/%d of media type %s", i+1, len(layers), mediaType)
+			logrus.Tracef("Extracting layer %d of media type %s", i, mediaType)
 		} else {
-			logrus.Tracef("Extracting layer %d/%d", i+1, len(layers))
-		}
-
-		progressPerc := float64(extractedBytes) / float64(totalSize) * 100
-		if printExtractionProgress {
-			logrus.Infof("Extracting layer %d/%d (%.1f%%)", i+1, len(layers), progressPerc)
+			logrus.Tracef("Extracting layer %d", i)
 		}
 
 		r, err := l.Uncompressed()
@@ -208,16 +176,6 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 			return nil, err
 		}
 		defer r.Close()
-
-		if printExtractionProgress {
-			r = &printAfterReader{
-				ReadCloser: r,
-				after:      time.Second,
-				print: func(n int) {
-					logrus.Infof("Extracting layer %d/%d (%.1f%%) %s", i+1, len(layers), progressPerc, strings.Repeat(".", n))
-				},
-			}
-		}
 
 		tr := tar.NewReader(r)
 		for {
@@ -267,36 +225,8 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 
 			extractedFiles = append(extractedFiles, filepath.Join(root, cleanedName))
 		}
-
-		extractedBytes += layerSizes[i]
 	}
-
-	if printExtractionProgress {
-		logrus.Infof("Extraction complete")
-	}
-
 	return extractedFiles, nil
-}
-
-type printAfterReader struct {
-	io.ReadCloser
-	t     time.Time
-	after time.Duration
-	count int
-	print func(int)
-}
-
-func (r *printAfterReader) Read(p []byte) (n int, err error) {
-	n, err = r.ReadCloser.Read(p)
-	if r.t.IsZero() {
-		r.t = time.Now()
-	}
-	if time.Since(r.t) >= r.after {
-		r.count++
-		r.print(r.count)
-		r.t = time.Now()
-	}
-	return
 }
 
 // DeleteFilesystem deletes the extracted image file system
