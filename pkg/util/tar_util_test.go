@@ -22,6 +22,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -153,6 +154,9 @@ func Test_CreateTarballOfDirectory(t *testing.T) {
 			// skip directory
 			continue
 		}
+		if modTime := fileInfo.ModTime(); modTime.Equal(time.Unix(0, 0)) {
+			t.Errorf("unexpected modtime %q of %q", modTime, fileInfo.Name())
+		}
 		file, err := os.Open(filePath)
 		testutil.CheckError(t, wantErr, err)
 		body, err := io.ReadAll(file)
@@ -170,5 +174,58 @@ func createFilesInTempDir(t *testing.T, tmpDir string) {
 			t.Error(err)
 			return
 		}
+	}
+}
+
+func Test_NewReproducibleTar(t *testing.T) {
+	tmpDir := t.TempDir()
+	createFilesInTempDir(t, tmpDir)
+	f := &bytes.Buffer{}
+
+	// Create tarball ignoring timestamps
+	tw := NewReproducibleTar(f)
+	if err := filepath.WalkDir(tmpDir, func(path string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("path %v is not absolute", path)
+		}
+		return tw.AddFileToTar(path)
+	}); err != nil {
+		t.Fatalf("failed to create tar of %q: %s", tmpDir, err.Error())
+	}
+
+	extracedFilesDir := filepath.Join(tmpDir, "extracted")
+	if err := os.Mkdir(extracedFilesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	files, err := UnTar(f, extracedFilesDir)
+	if err != nil {
+		t.Fatalf("untar: %s", err.Error())
+	}
+	for _, filePath := range files {
+		fileInfo, err := os.Lstat(filePath)
+		if err != nil {
+			t.Fatalf("stat %q: %s", filePath, err.Error())
+		}
+		if fileInfo.IsDir() {
+			// skip directory
+			continue
+		}
+		// In a 'reproducible' tar, all timestamps should be set to zero
+		if modTime := fileInfo.ModTime(); !modTime.Equal(time.Unix(0, 0)) {
+			t.Errorf("unexpected modtime %q of %q", modTime, filePath)
+		}
+		file, err := os.Open(filePath)
+		if err != nil {
+			t.Fatalf("open file %q: %s", filePath, err.Error())
+		}
+		body, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read file %q: %s", filePath, err.Error())
+		}
+		index := filepath.Base(filePath)
+		testutil.CheckDeepEqual(t, string(body), fmt.Sprintf("hello from %s\n", index))
 	}
 }
