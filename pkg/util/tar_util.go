@@ -38,9 +38,9 @@ import (
 
 // Tar knows how to write files to a tar file.
 type Tar struct {
-	hardlinks map[uint64]string
-	w         *tar.Writer
-	canonical bool
+	hardlinks        map[uint64]string
+	w                *tar.Writer
+	ignoreTimestamps bool
 }
 
 // NewTar will create an instance of Tar that can write files to the writer at f.
@@ -52,14 +52,14 @@ func NewTar(f io.Writer) Tar {
 	}
 }
 
-// NewCanonicalTar will create an instance of Tar that can write files to the
+// NewReproducibleTar will create an instance of Tar that can write files to the
 // writer at f, ignoring timestamps to produce a canonical archive.
-func NewCanonicalTar(f io.Writer) Tar {
+func NewReproducibleTar(f io.Writer) Tar {
 	w := tar.NewWriter(f)
 	return Tar{
-		w:         w,
-		hardlinks: map[uint64]string{},
-		canonical: true,
+		w:                w,
+		hardlinks:        map[uint64]string{},
+		ignoreTimestamps: true,
 	}
 }
 
@@ -110,7 +110,7 @@ func (t *Tar) AddFileToTar(p string) error {
 	if err != nil {
 		return err
 	}
-	if t.canonical {
+	if t.ignoreTimestamps {
 		ct := time.Time{}
 		hdr.ModTime = ct
 

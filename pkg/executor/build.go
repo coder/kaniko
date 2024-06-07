@@ -115,7 +115,7 @@ func newStageBuilder(args *dockerfile.BuildArgs, opts *config.KanikoOptions, sta
 	if !opts.Reproducible {
 		snapshotter = snapshot.NewSnapshotter(l, config.RootDir)
 	} else {
-		snapshotter = snapshot.NewCanonicalSnapshotter(l, config.RootDir)
+		snapshotter = snapshot.NewReproducibleSnapshotter(l, config.RootDir)
 	}
 
 	digest, err := sourceImage.Digest()
