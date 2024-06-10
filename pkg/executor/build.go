@@ -111,7 +111,12 @@ func newStageBuilder(args *dockerfile.BuildArgs, opts *config.KanikoOptions, sta
 		return nil, err
 	}
 	l := snapshot.NewLayeredMap(hasher)
-	snapshotter := snapshot.NewSnapshotter(l, config.RootDir)
+	var snapshotter snapShotter
+	if !opts.Reproducible {
+		snapshotter = snapshot.NewSnapshotter(l, config.RootDir)
+	} else {
+		snapshotter = snapshot.NewReproducibleSnapshotter(l, config.RootDir)
+	}
 
 	digest, err := sourceImage.Digest()
 	if err != nil {
@@ -439,6 +444,93 @@ func (s *stageBuilder) build() error {
 
 	if err := cacheGroup.Wait(); err != nil {
 		logrus.Warnf("Error uploading layer to cache: %s", err)
+	}
+
+	return nil
+}
+
+// probeCache builds a stage entirely from the build cache.
+// All COPY and RUN commands are faked.
+// Note: USER and ENV commands are not supported.
+func (s *stageBuilder) probeCache() error {
+	// Set the initial cache key to be the base image digest, the build args and the SrcContext.
+	var compositeKey *CompositeCache
+	if cacheKey, ok := s.digestToCacheKey[s.baseImageDigest]; ok {
+		compositeKey = NewCompositeCache(cacheKey)
+	} else {
+		compositeKey = NewCompositeCache(s.baseImageDigest)
+	}
+
+	// Apply optimizations to the instructions.
+	if err := s.optimize(*compositeKey, s.cf.Config); err != nil {
+		return errors.Wrap(err, "failed to optimize instructions")
+	}
+
+	for index, command := range s.cmds {
+		if command == nil {
+			continue
+		}
+
+		// If the command uses files from the context, add them.
+		files, err := command.FilesUsedFromContext(&s.cf.Config, s.args)
+		if err != nil {
+			return errors.Wrap(err, "failed to get files used from context")
+		}
+
+		if s.opts.Cache {
+			*compositeKey, err = s.populateCompositeKey(command, files, *compositeKey, s.args, s.cf.Config.Env)
+			if err != nil && s.opts.Cache {
+				return err
+			}
+		}
+
+		logrus.Info(command.String())
+
+		isCacheCommand := func() bool {
+			switch command.(type) {
+			case commands.Cached:
+				return true
+			default:
+				return false
+			}
+		}()
+
+		if c, ok := command.(commands.FakeExecuteCommand); ok {
+			if err := c.FakeExecuteCommand(&s.cf.Config, s.args); err != nil {
+				return errors.Wrap(err, "failed to execute fake command")
+			}
+		} else {
+			switch command.(type) {
+			case *commands.UserCommand:
+			default:
+				return errors.Errorf("uncached command %T is not supported in fake build", command)
+			}
+			if err := command.ExecuteCommand(&s.cf.Config, s.args); err != nil {
+				return errors.Wrap(err, "failed to execute command")
+			}
+		}
+		files = command.FilesToSnapshot()
+
+		if !s.shouldTakeSnapshot(index, command.MetadataOnly()) && !s.opts.ForceBuildMetadata {
+			logrus.Debugf("fakeBuild: skipping snapshot for [%v]", command.String())
+			continue
+		}
+		if isCacheCommand {
+			v := command.(commands.Cached)
+			layer := v.Layer()
+			if err := s.saveLayerToImage(layer, command.String()); err != nil {
+				return errors.Wrap(err, "failed to save layer")
+			}
+		} else {
+			tarPath, err := s.takeSnapshot(files, command.ShouldDetectDeletedFiles())
+			if err != nil {
+				return errors.Wrap(err, "failed to take snapshot")
+			}
+
+			if err := s.saveSnapshotToImage(command.String(), tarPath); err != nil {
+				return errors.Wrap(err, "failed to save snapshot to image")
+			}
+		}
 	}
 
 	return nil
@@ -787,7 +879,9 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 				return nil, err
 			}
 			if opts.Reproducible {
-				sourceImage, err = mutate.Canonical(sourceImage)
+				// If this option is enabled, we will use the canonical
+				// snapshotter to avoid having to modify the layers here.
+				sourceImage, err = mutateCanonicalWithoutLayerEdit(sourceImage)
 				if err != nil {
 					return nil, err
 				}
@@ -797,6 +891,7 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 					return nil, err
 				}
 			}
+
 			timing.DefaultRun.Stop(t)
 			return sourceImage, nil
 		}
@@ -831,6 +926,141 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 	}
 
 	return nil, err
+}
+
+// DoCacheProbe builds the Dockerfile relying entirely on the build
+// cache without modifying the filesystem.
+// Returns an error if any layers are missing from build cache.
+func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
+	digestToCacheKey := make(map[string]string)
+	stageIdxToDigest := make(map[string]string)
+
+	stages, metaArgs, err := dockerfile.ParseStages(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	kanikoStages, err := dockerfile.MakeKanikoStages(opts, stages, metaArgs)
+	if err != nil {
+		return nil, err
+	}
+	stageNameToIdx := ResolveCrossStageInstructions(kanikoStages)
+
+	fileContext, err := util.NewFileContextFromDockerfile(opts.DockerfilePath, opts.SrcContext)
+	if err != nil {
+		return nil, err
+	}
+
+	// Some stages may refer to other random images, not previous stages
+	if err := fetchExtraStages(kanikoStages, opts); err != nil {
+		return nil, err
+	}
+	crossStageDependencies, err := CalculateDependencies(kanikoStages, opts, stageNameToIdx)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Infof("Built cross stage deps: %v", crossStageDependencies)
+
+	var args *dockerfile.BuildArgs
+
+	for _, stage := range kanikoStages {
+		sb, err := newStageBuilder(
+			args, opts, stage,
+			crossStageDependencies,
+			digestToCacheKey,
+			stageIdxToDigest,
+			stageNameToIdx,
+			fileContext)
+		if err != nil {
+			return nil, err
+		}
+
+		args = sb.args
+		if err := sb.probeCache(); err != nil {
+			return nil, errors.Wrap(err, "error fake building stage")
+		}
+
+		reviewConfig(stage, &sb.cf.Config)
+
+		sourceImage, err := mutate.Config(sb.image, sb.cf.Config)
+		if err != nil {
+			return nil, err
+		}
+
+		configFile, err := sourceImage.ConfigFile()
+		if err != nil {
+			return nil, err
+		}
+		if opts.CustomPlatform == "" {
+			configFile.OS = runtime.GOOS
+			configFile.Architecture = runtime.GOARCH
+		} else {
+			configFile.OS = strings.Split(opts.CustomPlatform, "/")[0]
+			configFile.Architecture = strings.Split(opts.CustomPlatform, "/")[1]
+		}
+		sourceImage, err = mutate.ConfigFile(sourceImage, configFile)
+		if err != nil {
+			return nil, err
+		}
+
+		d, err := sourceImage.Digest()
+		if err != nil {
+			return nil, err
+		}
+		stageIdxToDigest[fmt.Sprintf("%d", sb.stage.Index)] = d.String()
+		logrus.Infof("Mapping stage idx %v to digest %v", sb.stage.Index, d.String())
+
+		digestToCacheKey[d.String()] = sb.finalCacheKey
+		logrus.Infof("Mapping digest %v to cachekey %v", d.String(), sb.finalCacheKey)
+
+		if stage.Final {
+			sourceImage, err = mutateCanonicalWithoutLayerEdit(sourceImage)
+			if err != nil {
+				return nil, err
+			}
+
+			return sourceImage, nil
+		}
+	}
+
+	return nil, err
+}
+
+// From mutate.Canonical with layer de/compress stripped out.
+func mutateCanonicalWithoutLayerEdit(image v1.Image) (v1.Image, error) {
+	t := time.Time{}
+
+	ocf, err := image.ConfigFile()
+	if err != nil {
+		return nil, fmt.Errorf("setting config file: %w", err)
+	}
+
+	cfg := ocf.DeepCopy()
+
+	// Copy basic config over
+	cfg.Architecture = ocf.Architecture
+	cfg.OS = ocf.OS
+	cfg.OSVersion = ocf.OSVersion
+	cfg.Config = ocf.Config
+
+	// Strip away timestamps from the config file
+	cfg.Created = v1.Time{Time: t}
+
+	for i, h := range cfg.History {
+		h.Created = v1.Time{Time: t}
+		h.CreatedBy = ocf.History[i].CreatedBy
+		h.Comment = ocf.History[i].Comment
+		h.EmptyLayer = ocf.History[i].EmptyLayer
+		// Explicitly ignore Author field; which hinders reproducibility
+		h.Author = ""
+		cfg.History[i] = h
+	}
+
+	cfg.Container = ""
+	cfg.Config.Hostname = ""
+	cfg.DockerVersion = ""
+
+	return mutate.ConfigFile(image, cfg)
 }
 
 // filesToSave returns all the files matching the given pattern in deps.

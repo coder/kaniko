@@ -256,6 +256,29 @@ func (cr *CachingRunCommand) ExecuteCommand(config *v1.Config, buildArgs *docker
 	return nil
 }
 
+func (cr *CachingRunCommand) FakeExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	logrus.Infof("Found cached layer, faking extraction to filesystem")
+	var err error
+
+	if cr.img == nil {
+		return errors.New(fmt.Sprintf("command image is nil %v", cr.String()))
+	}
+
+	layers, err := cr.img.Layers()
+	if err != nil {
+		return errors.Wrap(err, "retrieving image layers")
+	}
+
+	if len(layers) != 1 {
+		return errors.New(fmt.Sprintf("expected %d layers but got %d", 1, len(layers)))
+	}
+
+	cr.layer = layers[0]
+	cr.extractedFiles = []string{}
+
+	return nil
+}
+
 func (cr *CachingRunCommand) FilesToSnapshot() []string {
 	f := cr.extractedFiles
 	logrus.Debugf("%d files extracted by caching run command", len(f))

@@ -39,14 +39,21 @@ var snapshotPathPrefix = ""
 
 // Snapshotter holds the root directory from which to take snapshots, and a list of snapshots taken
 type Snapshotter struct {
-	l          *LayeredMap
-	directory  string
-	ignorelist []util.IgnoreListEntry
+	l            *LayeredMap
+	directory    string
+	ignorelist   []util.IgnoreListEntry
+	reproducible bool
 }
 
 // NewSnapshotter creates a new snapshotter rooted at d
 func NewSnapshotter(l *LayeredMap, d string) *Snapshotter {
 	return &Snapshotter{l: l, directory: d, ignorelist: util.IgnoreList()}
+}
+
+// NewReproducibleSnapshotter creates a new snapshotter rooted at d that produces
+// reproducible snapshots.
+func NewReproducibleSnapshotter(l *LayeredMap, d string) *Snapshotter {
+	return &Snapshotter{l: l, directory: d, ignorelist: util.IgnoreList(), reproducible: true}
 }
 
 // Init initializes a new snapshotter
@@ -112,7 +119,12 @@ func (s *Snapshotter) TakeSnapshot(files []string, shdCheckDelete bool, forceBui
 		sort.Strings(filesToWhiteout)
 	}
 
-	t := util.NewTar(f)
+	var t util.Tar
+	if !s.reproducible {
+		t = util.NewTar(f)
+	} else {
+		t = util.NewReproducibleTar(f)
+	}
 	defer t.Close()
 	if err := writeToTar(t, filesToAdd, filesToWhiteout); err != nil {
 		return "", err
@@ -128,7 +140,12 @@ func (s *Snapshotter) TakeSnapshotFS() (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	t := util.NewTar(f)
+	var t util.Tar
+	if !s.reproducible {
+		t = util.NewTar(f)
+	} else {
+		t = util.NewReproducibleTar(f)
+	}
 	defer t.Close()
 
 	filesToAdd, filesToWhiteOut, err := s.scanFullFilesystem()
