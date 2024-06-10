@@ -449,9 +449,10 @@ func (s *stageBuilder) build() error {
 	return nil
 }
 
-// fakeBuild is like build(), but does not actually execute the commands or
-// extract files.
-func (s *stageBuilder) fakeBuild() error {
+// probeCache builds a stage entirely from the build cache.
+// All COPY and RUN commands are faked.
+// Note: USER and ENV commands are not supported.
+func (s *stageBuilder) probeCache() error {
 	// Set the initial cache key to be the base image digest, the build args and the SrcContext.
 	var compositeKey *CompositeCache
 	if cacheKey, ok := s.digestToCacheKey[s.baseImageDigest]; ok {
@@ -927,9 +928,10 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 	return nil, err
 }
 
-// DoFakeBuild executes building the Dockerfile without modifying the
-// filesystem, returns an error if build cache is not available.
-func DoFakeBuild(opts *config.KanikoOptions) (v1.Image, error) {
+// DoCacheProbe builds the Dockerfile relying entirely on the build
+// cache without modifying the filesystem.
+// Returns an error if any layers are missing from build cache.
+func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
 	digestToCacheKey := make(map[string]string)
 	stageIdxToDigest := make(map[string]string)
 
@@ -974,7 +976,7 @@ func DoFakeBuild(opts *config.KanikoOptions) (v1.Image, error) {
 		}
 
 		args = sb.args
-		if err := sb.fakeBuild(); err != nil {
+		if err := sb.probeCache(); err != nil {
 			return nil, errors.Wrap(err, "error fake building stage")
 		}
 
