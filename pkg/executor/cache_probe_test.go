@@ -38,7 +38,6 @@ COPY foo/bar.txt copied/
 `
 		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
 		// Populate the cache by doing an initial build
-		cacheDir := t.TempDir()
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -49,7 +48,7 @@ COPY foo/bar.txt copied/
 			},
 			CacheCopyLayers: true,
 			CacheRunLayers:  true,
-			CacheRepo:       "oci:/" + cacheDir,
+			CacheRepo:       "localhost:5000/kaniko/testdocacheprobe/empty",
 		}
 		_, err := DoCacheProbe(opts)
 		if err == nil || !strings.Contains(err.Error(), "not supported in fake build") {
@@ -64,7 +63,6 @@ COPY foo/bar.txt copied/
 COPY foo/bar.txt copied/
 `
 		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
-		cacheDir := t.TempDir()
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -75,7 +73,7 @@ COPY foo/bar.txt copied/
 			},
 			CacheCopyLayers: true,
 			CacheRunLayers:  true,
-			CacheRepo:       "oci:/" + cacheDir,
+			CacheRepo:       "localhost:5000/kaniko/testdocacheprobe/present",
 		}
 		_, err := DoBuild(opts)
 		testutil.CheckNoError(t, err)
@@ -91,7 +89,6 @@ COPY foo/bar.txt copied/
 COPY foo/bar.txt copied/
 `
 		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
-		cacheDir := t.TempDir()
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -102,7 +99,7 @@ COPY foo/bar.txt copied/
 			},
 			CacheCopyLayers: true,
 			CacheRunLayers:  true,
-			CacheRepo:       "oci:/" + cacheDir,
+			CacheRepo:       "localhost:5000/kaniko/testdocacheprobe/present",
 		}
 		_, err := DoBuild(opts)
 		testutil.CheckNoError(t, err)
