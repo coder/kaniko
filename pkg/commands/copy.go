@@ -206,7 +206,7 @@ func (cr *CachingCopyCommand) ExecuteCommand(config *v1.Config, buildArgs *docke
 	return nil
 }
 
-func (cr *CachingCopyCommand) FakeExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+func (cr *CachingCopyCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
 	logrus.Infof("Found cached layer, faking extraction to filesystem")
 	var err error
 

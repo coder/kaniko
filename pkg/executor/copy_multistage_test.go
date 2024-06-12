@@ -169,7 +169,6 @@ COPY --from=first / output/`
 		testutil.CheckDeepEqual(t, "bam.link", files[0].Name())
 		testutil.CheckDeepEqual(t, "bam.txt", files[1].Name())
 	})
-
 }
 
 func setupMultistageTests(t *testing.T) (string, func()) {
