@@ -33,6 +33,6 @@ func (c caching) Layer() v1.Layer {
 	return c.layer
 }
 
-type FakeExecuteCommand interface {
-	FakeExecuteCommand(*v1.Config, *dockerfile.BuildArgs) error
+type CachedExecuteCommand interface {
+	CachedExecuteCommand(*v1.Config, *dockerfile.BuildArgs) error
 }

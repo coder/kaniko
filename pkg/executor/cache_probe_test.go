@@ -18,11 +18,15 @@ package executor
 
 import (
 	"fmt"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/go-containerregistry/pkg/registry"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
@@ -37,8 +41,7 @@ func TestDoCacheProbe(t *testing.T) {
 COPY foo/bar.txt copied/
 `
 		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
-		// Populate the cache by doing an initial build
-		cacheDir := t.TempDir()
+		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -49,10 +52,10 @@ COPY foo/bar.txt copied/
 			},
 			CacheCopyLayers: true,
 			CacheRunLayers:  true,
-			CacheRepo:       "oci:/" + cacheDir,
+			CacheRepo:       regCache + "/test",
 		}
 		_, err := DoCacheProbe(opts)
-		if err == nil || !strings.Contains(err.Error(), "not supported in fake build") {
+		if err == nil || !strings.Contains(err.Error(), "uncached command") {
 			t.Errorf("unexpected error, got %v", err)
 		}
 	})
@@ -64,7 +67,7 @@ COPY foo/bar.txt copied/
 COPY foo/bar.txt copied/
 `
 		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
-		cacheDir := t.TempDir()
+		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -75,8 +78,9 @@ COPY foo/bar.txt copied/
 			},
 			CacheCopyLayers: true,
 			CacheRunLayers:  true,
-			CacheRepo:       "oci:/" + cacheDir,
+			CacheRepo:       regCache + "/test",
 		}
+		// Populate the cache by doing an initial build
 		_, err := DoBuild(opts)
 		testutil.CheckNoError(t, err)
 		opts.Reproducible = true
@@ -91,18 +95,18 @@ COPY foo/bar.txt copied/
 COPY foo/bar.txt copied/
 `
 		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
-		cacheDir := t.TempDir()
+		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
-			SnapshotMode:   constants.SnapshotModeFull,
+			SnapshotMode:   constants.SnapshotModeRedo,
 			Cache:          true,
 			CacheOptions: config.CacheOptions{
 				CacheTTL: time.Hour,
 			},
 			CacheCopyLayers: true,
 			CacheRunLayers:  true,
-			CacheRepo:       "oci:/" + cacheDir,
+			CacheRepo:       regCache + "/test",
 		}
 		_, err := DoBuild(opts)
 		testutil.CheckNoError(t, err)
@@ -115,10 +119,61 @@ COPY foo/baz.txt copied/
 `
 		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
 		_, err = DoCacheProbe(opts)
-		if err == nil || !strings.Contains(err.Error(), "not supported in fake build") {
+		if err == nil || !strings.Contains(err.Error(), "uncached command") {
 			t.Errorf("unexpected error, got %v", err)
 		}
 	})
+
+	t.Run("MultiStage", func(t *testing.T) {
+		t.Skip("TODO: https://github.com/coder/envbuilder/issues/230")
+		testDir, fn := setupMultistageTests(t)
+		defer fn()
+		dockerFile := `
+		FROM scratch as first
+		COPY foo/bam.txt copied/
+		ENV test test
+		
+		From scratch as second
+		COPY --from=first copied/bam.txt output/bam.txt`
+		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		regCache := setupCacheRegistry(t)
+		opts := &config.KanikoOptions{
+			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
+			SrcContext:     filepath.Join(testDir, "workspace"),
+			SnapshotMode:   constants.SnapshotModeRedo,
+			Cache:          true,
+			CacheOptions: config.CacheOptions{
+				CacheTTL: time.Hour,
+			},
+			CacheCopyLayers: true,
+			CacheRunLayers:  true,
+			CacheRepo:       regCache + "/test",
+		}
+		_, err := DoBuild(opts)
+		testutil.CheckNoError(t, err)
+		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		opts.Reproducible = true
+		_, err = DoCacheProbe(opts)
+		testutil.CheckNoError(t, err)
+		// Check Image has one layer bam.txt
+		files, err := readDirectory(filepath.Join(testDir, "output"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CheckDeepEqual(t, 1, len(files))
+		testutil.CheckDeepEqual(t, files[0].Name(), "bam.txt")
+	})
+}
+
+func setupCacheRegistry(t *testing.T) string {
+	t.Helper()
+	tempDir := t.TempDir()
+	testReg := registry.New(registry.WithBlobHandler(registry.NewDiskBlobHandler(tempDir)))
+	regSrv := httptest.NewServer(testReg)
+	t.Cleanup(func() { regSrv.Close() })
+	regSrvURL, err := url.Parse(regSrv.URL)
+	testutil.CheckNoError(t, err)
+	return fmt.Sprintf("localhost:%s", regSrvURL.Port())
 }
 
 func setupCacheProbeTests(t *testing.T) (string, func()) {

@@ -495,15 +495,15 @@ func (s *stageBuilder) probeCache() error {
 			}
 		}()
 
-		if c, ok := command.(commands.FakeExecuteCommand); ok {
-			if err := c.FakeExecuteCommand(&s.cf.Config, s.args); err != nil {
-				return errors.Wrap(err, "failed to execute fake command")
+		if c, ok := command.(commands.CachedExecuteCommand); ok {
+			if err := c.CachedExecuteCommand(&s.cf.Config, s.args); err != nil {
+				return errors.Wrap(err, "failed to execute cached command")
 			}
 		} else {
 			switch command.(type) {
 			case *commands.UserCommand:
 			default:
-				return errors.Errorf("uncached command %T is not supported in fake build", command)
+				return errors.Errorf("uncached command %T encountered when probing cache", command)
 			}
 			if err := command.ExecuteCommand(&s.cf.Config, s.args); err != nil {
 				return errors.Wrap(err, "failed to execute command")
@@ -977,7 +977,7 @@ func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
 
 		args = sb.args
 		if err := sb.probeCache(); err != nil {
-			return nil, errors.Wrap(err, "error fake building stage")
+			return nil, errors.Wrap(err, "error probing build cache")
 		}
 
 		reviewConfig(stage, &sb.cf.Config)
