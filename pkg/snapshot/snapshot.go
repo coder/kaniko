@@ -39,21 +39,22 @@ var snapshotPathPrefix = ""
 
 // Snapshotter holds the root directory from which to take snapshots, and a list of snapshots taken
 type Snapshotter struct {
-	l            *LayeredMap
-	directory    string
-	ignorelist   []util.IgnoreListEntry
-	reproducible bool
+	l               *LayeredMap
+	directory       string
+	ignorelist      []util.IgnoreListEntry
+	reproducible    bool
+	includeExplicit map[string]struct{}
 }
 
 // NewSnapshotter creates a new snapshotter rooted at d
 func NewSnapshotter(l *LayeredMap, d string) *Snapshotter {
-	return &Snapshotter{l: l, directory: d, ignorelist: util.IgnoreList()}
+	return &Snapshotter{l: l, directory: d, ignorelist: util.IgnoreList(), includeExplicit: map[string]struct{}{}}
 }
 
 // NewReproducibleSnapshotter creates a new snapshotter rooted at d that produces
 // reproducible snapshots.
 func NewReproducibleSnapshotter(l *LayeredMap, d string) *Snapshotter {
-	return &Snapshotter{l: l, directory: d, ignorelist: util.IgnoreList(), reproducible: true}
+	return &Snapshotter{l: l, directory: d, ignorelist: util.IgnoreList(), reproducible: true, includeExplicit: map[string]struct{}{}}
 }
 
 // Init initializes a new snapshotter
@@ -66,6 +67,10 @@ func (s *Snapshotter) Init() error {
 // Key returns a string based on the current state of the file system
 func (s *Snapshotter) Key() (string, error) {
 	return s.l.Key()
+}
+
+func (s *Snapshotter) IncludeExplicit(path string) {
+	s.includeExplicit[path] = struct{}{}
 }
 
 // TakeSnapshot takes a snapshot of the specified files, avoiding directories in the ignorelist, and creates
@@ -87,6 +92,9 @@ func (s *Snapshotter) TakeSnapshot(files []string, shdCheckDelete bool, forceBui
 	if err != nil {
 		return "", err
 	}
+	for path := range s.includeExplicit {
+		filesToAdd = append(filesToAdd, path)
+	}
 
 	logrus.Info("Taking snapshot of files...")
 
@@ -103,7 +111,11 @@ func (s *Snapshotter) TakeSnapshot(files []string, shdCheckDelete bool, forceBui
 	// Get whiteout paths
 	var filesToWhiteout []string
 	if shdCheckDelete {
-		_, deletedFiles := util.WalkFS(s.directory, s.l.GetCurrentPaths(), func(s string) (bool, error) {
+		_, deletedFiles := util.WalkFS(s.directory, s.l.GetCurrentPaths(), func(path string) (bool, error) {
+			if _, ok := s.includeExplicit[path]; ok {
+				logrus.Debugf("Not deleting file as we were told explicitly to include it: %v", path)
+				return false, nil
+			}
 			return true, nil
 		})
 
@@ -205,6 +217,12 @@ func (s *Snapshotter) scanFullFilesystem() ([]string, []string, error) {
 			logrus.Debugf("Not adding %s to layer, as it's ignored", path)
 			continue
 		}
+		filesToAdd = append(filesToAdd, path)
+	}
+
+	// Add explicit paths we are told to
+	for path := range s.includeExplicit {
+		logrus.Debugf("explicitly adding %s", path)
 		filesToAdd = append(filesToAdd, path)
 	}
 

@@ -111,11 +111,15 @@ func newStageBuilder(args *dockerfile.BuildArgs, opts *config.KanikoOptions, sta
 		return nil, err
 	}
 	l := snapshot.NewLayeredMap(hasher)
-	var snapshotter snapShotter
+	var snapshotter *snapshot.Snapshotter
 	if !opts.Reproducible {
 		snapshotter = snapshot.NewSnapshotter(l, config.RootDir)
 	} else {
 		snapshotter = snapshot.NewReproducibleSnapshotter(l, config.RootDir)
+	}
+
+	for _, path := range opts.IncludeExplicit {
+		snapshotter.IncludeExplicit(path)
 	}
 
 	digest, err := sourceImage.Digest()

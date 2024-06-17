@@ -96,6 +96,7 @@ type KanikoOptions struct {
 	InitialFSUnpacked        bool
 	ForceUnpack              bool
 	SkipPushPermissionCheck  bool
+	IncludeExplicit          multiArg
 }
 
 type KanikoGitOptions struct {
