@@ -668,13 +668,29 @@ func CreateFile(path string, reader io.Reader, perm os.FileMode, uid uint32, gid
 		}
 	}
 
+	var renamed string
 	dest, err := os.Create(path)
 	if err != nil {
-		return errors.Wrap(err, "creating file")
+		if !errors.Is(err, syscall.ETXTBSY) {
+			return errors.Wrap(err, "creating file")
+		}
+		// If the file is busy, just write to a temp file and
+		// move to dest.
+		dest, err = os.CreateTemp(os.TempDir(), "")
+		if err != nil {
+			return errors.Wrap(err, "create temp file")
+		}
+		defer os.Remove(dest.Name())
+		renamed = dest.Name()
 	}
 	defer dest.Close()
 	if _, err := io.Copy(dest, reader); err != nil {
 		return errors.Wrap(err, "copying file")
+	}
+	if renamed != "" {
+		if err := os.Rename(renamed, path); err != nil {
+			return errors.Wrap(err, "rename temp file")
+		}
 	}
 	return setFilePermissions(path, perm, int(uid), int(gid))
 }
