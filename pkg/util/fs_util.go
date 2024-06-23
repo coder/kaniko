@@ -56,24 +56,29 @@ const (
 type IgnoreListEntry struct {
 	Path            string
 	PrefixMatchOnly bool
+	// AllowedPaths specifies **exact matches** to ignore, even if they are under Path.
+	AllowedPaths map[string]struct{}
 }
 
 var defaultIgnoreList = []IgnoreListEntry{
 	{
 		Path:            filepath.Clean(config.KanikoDir),
 		PrefixMatchOnly: false,
+		AllowedPaths:    make(map[string]struct{}),
 	},
 	{
 		// similarly, we ignore /etc/mtab, since there is no way to know if the file was mounted or came
 		// from the base image
 		Path:            "/etc/mtab",
 		PrefixMatchOnly: false,
+		AllowedPaths:    make(map[string]struct{}),
 	},
 	{
 		// we ingore /tmp/apt-key-gpghome, since the apt keys are added temporarily in this directory.
 		// from the base image
 		Path:            "/tmp/apt-key-gpghome",
 		PrefixMatchOnly: true,
+		AllowedPaths:    make(map[string]struct{}),
 	},
 }
 
@@ -111,6 +116,7 @@ func AddToIgnoreList(entry IgnoreListEntry) {
 	ignorelist = append(ignorelist, IgnoreListEntry{
 		Path:            filepath.Clean(entry.Path),
 		PrefixMatchOnly: entry.PrefixMatchOnly,
+		AllowedPaths:    make(map[string]struct{}),
 	})
 }
 
@@ -118,7 +124,20 @@ func AddToDefaultIgnoreList(entry IgnoreListEntry) {
 	defaultIgnoreList = append(defaultIgnoreList, IgnoreListEntry{
 		Path:            filepath.Clean(entry.Path),
 		PrefixMatchOnly: entry.PrefixMatchOnly,
+		AllowedPaths:    make(map[string]struct{}),
 	})
+}
+
+func AddAllowedPathToDefaultIgnoreList(allowPath string) error {
+	for _, ile := range defaultIgnoreList {
+		logrus.Debugf("check ignore list entry %+v", ile)
+		if !strings.HasPrefix(allowPath, ile.Path) {
+			continue
+		}
+		ile.AllowedPaths[allowPath] = struct{}{}
+		return nil
+	}
+	return fmt.Errorf("path %q is not covered by any current entry in ignore list", allowPath)
 }
 
 func IncludeWhiteout() FSOpt {
@@ -500,6 +519,9 @@ func IsInIgnoreList(path string) bool {
 
 func CheckCleanedPathAgainstProvidedIgnoreList(path string, wl []IgnoreListEntry) bool {
 	for _, wl := range ignorelist {
+		if _, ok := wl.AllowedPaths[path]; ok {
+			return false
+		}
 		if hasCleanedFilepathPrefix(path, wl.Path, wl.PrefixMatchOnly) {
 			return true
 		}
@@ -701,6 +723,7 @@ func AddVolumePathToIgnoreList(path string) {
 	AddToIgnoreList(IgnoreListEntry{
 		Path:            path,
 		PrefixMatchOnly: true,
+		AllowedPaths:    map[string]struct{}{},
 	})
 	volumes = append(volumes, path)
 }

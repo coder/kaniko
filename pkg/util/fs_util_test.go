@@ -58,13 +58,13 @@ func Test_DetectFilesystemSkiplist(t *testing.T) {
 
 	err := DetectFilesystemIgnoreList(path)
 	expectedSkiplist := []IgnoreListEntry{
-		{"/kaniko", false},
-		{"/proc", false},
-		{"/dev", false},
-		{"/dev/pts", false},
-		{"/sys", false},
-		{"/etc/mtab", false},
-		{"/tmp/apt-key-gpghome", true},
+		{"/kaniko", false, map[string]struct{}{}},
+		{"/proc", false, map[string]struct{}{}},
+		{"/dev", false, map[string]struct{}{}},
+		{"/dev/pts", false, map[string]struct{}{}},
+		{"/sys", false, map[string]struct{}{}},
+		{"/etc/mtab", false, map[string]struct{}{}},
+		{"/tmp/apt-key-gpghome", true, map[string]struct{}{}},
 	}
 	actualSkiplist := ignorelist
 	sort.Slice(actualSkiplist, func(i, j int) bool {
@@ -274,7 +274,7 @@ func Test_CheckIgnoreList(t *testing.T) {
 			name: "file ignored",
 			args: args{
 				path:       "/foo",
-				ignorelist: []IgnoreListEntry{{"/foo", false}},
+				ignorelist: []IgnoreListEntry{{"/foo", false, map[string]struct{}{}}},
 			},
 			want: true,
 		},
@@ -282,7 +282,7 @@ func Test_CheckIgnoreList(t *testing.T) {
 			name: "directory ignored",
 			args: args{
 				path:       "/foo/bar",
-				ignorelist: []IgnoreListEntry{{"/foo", false}},
+				ignorelist: []IgnoreListEntry{{"/foo", false, map[string]struct{}{}}},
 			},
 			want: true,
 		},
@@ -290,7 +290,7 @@ func Test_CheckIgnoreList(t *testing.T) {
 			name: "grandparent ignored",
 			args: args{
 				path:       "/foo/bar/baz",
-				ignorelist: []IgnoreListEntry{{"/foo", false}},
+				ignorelist: []IgnoreListEntry{{"/foo", false, map[string]struct{}{}}},
 			},
 			want: true,
 		},
@@ -298,7 +298,7 @@ func Test_CheckIgnoreList(t *testing.T) {
 			name: "sibling ignored",
 			args: args{
 				path:       "/foo/bar/baz",
-				ignorelist: []IgnoreListEntry{{"/foo/bat", false}},
+				ignorelist: []IgnoreListEntry{{"/foo/bat", false, map[string]struct{}{}}},
 			},
 			want: false,
 		},
@@ -306,7 +306,7 @@ func Test_CheckIgnoreList(t *testing.T) {
 			name: "prefix match only ",
 			args: args{
 				path:       "/tmp/apt-key-gpghome.xft/gpg.key",
-				ignorelist: []IgnoreListEntry{{"/tmp/apt-key-gpghome.*", true}},
+				ignorelist: []IgnoreListEntry{{"/tmp/apt-key-gpghome.*", true, map[string]struct{}{}}},
 			},
 			want: true,
 		},
@@ -1487,22 +1487,27 @@ func TestInitIgnoreList(t *testing.T) {
 		{
 			Path:            "/kaniko",
 			PrefixMatchOnly: false,
+			AllowedPaths:    map[string]struct{}{},
 		},
 		{
 			Path:            "/test/kaniko",
 			PrefixMatchOnly: false,
+			AllowedPaths:    map[string]struct{}{},
 		},
 		{
 			Path:            "/test/proc",
 			PrefixMatchOnly: false,
+			AllowedPaths:    map[string]struct{}{},
 		},
 		{
 			Path:            "/etc/mtab",
 			PrefixMatchOnly: false,
+			AllowedPaths:    map[string]struct{}{},
 		},
 		{
 			Path:            "/tmp/apt-key-gpghome",
 			PrefixMatchOnly: true,
+			AllowedPaths:    map[string]struct{}{},
 		},
 	}
 
