@@ -56,24 +56,30 @@ const (
 type IgnoreListEntry struct {
 	Path            string
 	PrefixMatchOnly bool
+	// AllowedPaths specifies **exact matches** to allow, even if they are under
+	// Path.
+	AllowedPaths []string
 }
 
 var defaultIgnoreList = []IgnoreListEntry{
 	{
 		Path:            filepath.Clean(config.KanikoDir),
 		PrefixMatchOnly: false,
+		AllowedPaths:    nil,
 	},
 	{
 		// similarly, we ignore /etc/mtab, since there is no way to know if the file was mounted or came
 		// from the base image
 		Path:            "/etc/mtab",
 		PrefixMatchOnly: false,
+		AllowedPaths:    nil,
 	},
 	{
 		// we ingore /tmp/apt-key-gpghome, since the apt keys are added temporarily in this directory.
 		// from the base image
 		Path:            "/tmp/apt-key-gpghome",
 		PrefixMatchOnly: true,
+		AllowedPaths:    nil,
 	},
 }
 
@@ -111,6 +117,7 @@ func AddToIgnoreList(entry IgnoreListEntry) {
 	ignorelist = append(ignorelist, IgnoreListEntry{
 		Path:            filepath.Clean(entry.Path),
 		PrefixMatchOnly: entry.PrefixMatchOnly,
+		AllowedPaths:    nil,
 	})
 }
 
@@ -118,7 +125,19 @@ func AddToDefaultIgnoreList(entry IgnoreListEntry) {
 	defaultIgnoreList = append(defaultIgnoreList, IgnoreListEntry{
 		Path:            filepath.Clean(entry.Path),
 		PrefixMatchOnly: entry.PrefixMatchOnly,
+		AllowedPaths:    nil,
 	})
+}
+
+func AddAllowedPathToDefaultIgnoreList(allowPath string) error {
+	for _, ile := range defaultIgnoreList {
+		if !strings.HasPrefix(allowPath, ile.Path) {
+			continue
+		}
+		ile.AllowedPaths = append(ile.AllowedPaths, allowPath)
+		return nil
+	}
+	return fmt.Errorf("path %q is not covered by any current entry in ignore list", allowPath)
 }
 
 func IncludeWhiteout() FSOpt {
@@ -500,6 +519,11 @@ func IsInIgnoreList(path string) bool {
 
 func CheckCleanedPathAgainstProvidedIgnoreList(path string, wl []IgnoreListEntry) bool {
 	for _, wl := range ignorelist {
+		for _, ap := range wl.AllowedPaths {
+			if ap == path {
+				return false
+			}
+		}
 		if hasCleanedFilepathPrefix(path, wl.Path, wl.PrefixMatchOnly) {
 			return true
 		}
@@ -556,6 +580,7 @@ func DetectFilesystemIgnoreList(path string) error {
 			AddToIgnoreList(IgnoreListEntry{
 				Path:            lineArr[4],
 				PrefixMatchOnly: false,
+				AllowedPaths:    nil,
 			})
 		}
 		if err == io.EOF {
@@ -668,13 +693,29 @@ func CreateFile(path string, reader io.Reader, perm os.FileMode, uid uint32, gid
 		}
 	}
 
+	var renamed string
 	dest, err := os.Create(path)
 	if err != nil {
-		return errors.Wrap(err, "creating file")
+		if !errors.Is(err, syscall.ETXTBSY) {
+			return errors.Wrap(err, "creating file")
+		}
+		// If the file is busy, just write to a temp file and
+		// move to dest.
+		dest, err = os.CreateTemp(os.TempDir(), "")
+		if err != nil {
+			return errors.Wrap(err, "create temp file")
+		}
+		defer os.Remove(dest.Name())
+		renamed = dest.Name()
 	}
 	defer dest.Close()
 	if _, err := io.Copy(dest, reader); err != nil {
 		return errors.Wrap(err, "copying file")
+	}
+	if renamed != "" {
+		if err := os.Rename(renamed, path); err != nil {
+			return errors.Wrap(err, "rename temp file")
+		}
 	}
 	return setFilePermissions(path, perm, int(uid), int(gid))
 }
@@ -685,6 +726,7 @@ func AddVolumePathToIgnoreList(path string) {
 	AddToIgnoreList(IgnoreListEntry{
 		Path:            path,
 		PrefixMatchOnly: true,
+		AllowedPaths:    nil,
 	})
 	volumes = append(volumes, path)
 }
