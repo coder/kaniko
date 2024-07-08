@@ -32,6 +32,7 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
+	"github.com/moby/buildkit/frontend/dockerfile/linter"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
 )
@@ -94,10 +95,7 @@ func Parse(b []byte) ([]instructions.Stage, []instructions.ArgCommand, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-
-	// A major bump of buildkit from v26.1.5 to v27.2.1 introduced an additional param below, which represents a linter.
-	// This is a new feature that could be investigated. For now, we are ignoring it.
-	stages, metaArgs, err := instructions.Parse(p.AST, nil)
+	stages, metaArgs, err := instructions.Parse(p.AST, &linter.Linter{})
 	if err != nil {
 		return nil, nil, err
 	}
