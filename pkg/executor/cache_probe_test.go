@@ -55,7 +55,7 @@ COPY foo/bar.txt copied/
 			CacheRepo:       regCache + "/test",
 		}
 		_, err := DoCacheProbe(opts)
-		if err == nil || !strings.Contains(err.Error(), "uncached command") {
+		if err == nil || !strings.Contains(err.Error(), "uncached COPY command") {
 			t.Errorf("unexpected error, got %v", err)
 		}
 	})
@@ -119,7 +119,7 @@ COPY foo/baz.txt copied/
 `
 		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
 		_, err = DoCacheProbe(opts)
-		if err == nil || !strings.Contains(err.Error(), "uncached command") {
+		if err == nil || !strings.Contains(err.Error(), "uncached COPY command") {
 			t.Errorf("unexpected error, got %v", err)
 		}
 	})

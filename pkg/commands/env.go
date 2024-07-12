@@ -35,6 +35,10 @@ func (e *EnvCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bui
 	return util.UpdateConfigEnv(newEnvs, config, replacementEnvs)
 }
 
+func (e *EnvCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return e.ExecuteCommand(config, buildArgs)
+}
+
 // String returns some information about the command for the image config history
 func (e *EnvCommand) String() string {
 	return e.cmd.String()

@@ -51,6 +51,10 @@ func (e *EntrypointCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerf
 	return nil
 }
 
+func (e *EntrypointCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return e.ExecuteCommand(config, buildArgs)
+}
+
 // String returns some information about the command for the image config history
 func (e *EntrypointCommand) String() string {
 	return e.cmd.String()

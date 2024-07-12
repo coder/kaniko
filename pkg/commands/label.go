@@ -34,6 +34,10 @@ func (r *LabelCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.B
 	return updateLabels(r.cmd.Labels, config, buildArgs)
 }
 
+func (r *LabelCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return r.ExecuteCommand(config, buildArgs)
+}
+
 func updateLabels(labels []instructions.KeyValuePair, config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
 	existingLabels := config.Labels
 	if existingLabels == nil {

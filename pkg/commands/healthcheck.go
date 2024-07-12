@@ -46,6 +46,10 @@ func (h *HealthCheckCommand) ExecuteCommand(config *v1.Config, buildArgs *docker
 	return nil
 }
 
+func (h *HealthCheckCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return h.ExecuteCommand(config, buildArgs)
+}
+
 // String returns some information about the command for the image config history
 func (h *HealthCheckCommand) String() string {
 	return h.cmd.String()

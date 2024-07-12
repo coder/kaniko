@@ -54,6 +54,10 @@ func (c *CmdCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bui
 	return nil
 }
 
+func (c *CmdCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return c.ExecuteCommand(config, buildArgs)
+}
+
 // String returns some information about the command for the image config history
 func (c *CmdCommand) String() string {
 	return c.cmd.String()

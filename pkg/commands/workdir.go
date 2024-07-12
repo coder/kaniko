@@ -79,6 +79,30 @@ func (w *WorkdirCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile
 	return nil
 }
 
+func (w *WorkdirCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	logrus.Info("Cmd: workdir")
+	workdirPath := w.cmd.Path
+	replacementEnvs := buildArgs.ReplacementEnvs(config.Env)
+	resolvedWorkingDir, err := util.ResolveEnvironmentReplacement(workdirPath, replacementEnvs, true)
+	if err != nil {
+		return err
+	}
+	if filepath.IsAbs(resolvedWorkingDir) {
+		config.WorkingDir = resolvedWorkingDir
+	} else {
+		if config.WorkingDir != "" {
+			config.WorkingDir = filepath.Join(config.WorkingDir, resolvedWorkingDir)
+		} else {
+			config.WorkingDir = filepath.Join("/", resolvedWorkingDir)
+		}
+	}
+	logrus.Infof("Changed working directory to %s", config.WorkingDir)
+
+	// TODO(mafredri): Check if we need to do more here.
+	w.snapshotFiles = []string{}
+	return nil
+}
+
 // FilesToSnapshot returns the workingdir, which should have been created if it didn't already exist
 func (w *WorkdirCommand) FilesToSnapshot() []string {
 	return w.snapshotFiles
