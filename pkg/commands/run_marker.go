@@ -47,12 +47,6 @@ func (r *RunMarkerCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfi
 	return nil
 }
 
-func (r *RunMarkerCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
-	// TODO(mafredri): Check if we need to do more here.
-	r.Files = []string{}
-	return nil
-}
-
 // String returns some information about the command for the image config
 func (r *RunMarkerCommand) String() string {
 	return r.cmd.String()

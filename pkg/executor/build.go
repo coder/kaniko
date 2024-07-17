@@ -509,6 +509,9 @@ func (s *stageBuilder) probeCache() error {
 			case *commands.RunCommand:
 				// If the cache is valid, we expect CachingRunCommand.
 				return errors.Errorf("uncached RUN command is not supported in cache probe mode")
+			case *commands.RunMarkerCommand:
+				// If the cache is valid, we expect CachingRunCommand.
+				return errors.Errorf("uncached RUN command is not supported in cache probe mode")
 			default:
 				return errors.Errorf("unsupported command %T encountered in cache probe mode, missing CachedExecuteCommand", command)
 			}
