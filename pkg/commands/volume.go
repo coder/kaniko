@@ -63,6 +63,28 @@ func (v *VolumeCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.
 	return nil
 }
 
+func (v *VolumeCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	logrus.Info("Cmd: VOLUME")
+	volumes := v.cmd.Volumes
+	replacementEnvs := buildArgs.ReplacementEnvs(config.Env)
+	resolvedVolumes, err := util.ResolveEnvironmentReplacementList(volumes, replacementEnvs, true)
+	if err != nil {
+		return err
+	}
+	existingVolumes := config.Volumes
+	if existingVolumes == nil {
+		existingVolumes = map[string]struct{}{}
+	}
+	for _, volume := range resolvedVolumes {
+		var x struct{}
+		existingVolumes[volume] = x
+		util.AddVolumePathToIgnoreList(volume)
+	}
+	config.Volumes = existingVolumes
+
+	return nil
+}
+
 func (v *VolumeCommand) FilesToSnapshot() []string {
 	return []string{}
 }

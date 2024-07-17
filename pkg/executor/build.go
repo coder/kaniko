@@ -451,7 +451,6 @@ func (s *stageBuilder) build() error {
 
 // probeCache builds a stage entirely from the build cache.
 // All COPY and RUN commands are faked.
-// Note: USER and ENV commands are not supported.
 func (s *stageBuilder) probeCache() error {
 	// Set the initial cache key to be the base image digest, the build args and the SrcContext.
 	var compositeKey *CompositeCache
@@ -501,12 +500,17 @@ func (s *stageBuilder) probeCache() error {
 			}
 		} else {
 			switch command.(type) {
-			case *commands.UserCommand:
+			case *commands.AddCommand:
+				// The ADD directive does not support caching.
+				return errors.Errorf("ADD is not supported in cache probe mode, use COPY instead")
+			case *commands.CopyCommand:
+				// If the cache is valid, we expect CachingCopyCommand.
+				return errors.Errorf("uncached COPY command is not supported in cache probe mode")
+			case *commands.RunCommand:
+				// If the cache is valid, we expect CachingRunCommand.
+				return errors.Errorf("uncached RUN command is not supported in cache probe mode")
 			default:
-				return errors.Errorf("uncached command %T encountered when probing cache", command)
-			}
-			if err := command.ExecuteCommand(&s.cf.Config, s.args); err != nil {
-				return errors.Wrap(err, "failed to execute command")
+				return errors.Errorf("unsupported command %T encountered in cache probe mode, missing CachedExecuteCommand", command)
 			}
 		}
 		files = command.FilesToSnapshot()

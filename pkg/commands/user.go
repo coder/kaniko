@@ -55,6 +55,10 @@ func (r *UserCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bu
 	return nil
 }
 
+func (r *UserCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return r.ExecuteCommand(config, buildArgs)
+}
+
 func (r *UserCommand) String() string {
 	return r.cmd.String()
 }

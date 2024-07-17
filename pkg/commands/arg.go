@@ -41,6 +41,10 @@ func (r *ArgCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bui
 	return nil
 }
 
+func (r *ArgCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return r.ExecuteCommand(config, buildArgs)
+}
+
 func ParseArg(key string, val *string, env []string, ba *dockerfile.BuildArgs) (string, *string, error) {
 	replacementEnvs := ba.ReplacementEnvs(env)
 	resolvedKey, err := util.ResolveEnvironmentReplacement(key, replacementEnvs, false)

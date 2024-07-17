@@ -40,7 +40,8 @@ func TestDoCacheProbe(t *testing.T) {
 		dockerFile := `FROM scratch
 COPY foo/bar.txt copied/
 `
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		testutil.CheckNoError(t, err)
 		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
@@ -54,8 +55,8 @@ COPY foo/bar.txt copied/
 			CacheRunLayers:  true,
 			CacheRepo:       regCache + "/test",
 		}
-		_, err := DoCacheProbe(opts)
-		if err == nil || !strings.Contains(err.Error(), "uncached command") {
+		_, err = DoCacheProbe(opts)
+		if err == nil || !strings.Contains(err.Error(), "uncached COPY command") {
 			t.Errorf("unexpected error, got %v", err)
 		}
 	})
@@ -66,7 +67,8 @@ COPY foo/bar.txt copied/
 		dockerFile := `FROM scratch
 COPY foo/bar.txt copied/
 `
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		testutil.CheckNoError(t, err)
 		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
@@ -79,11 +81,45 @@ COPY foo/bar.txt copied/
 			CacheCopyLayers: true,
 			CacheRunLayers:  true,
 			CacheRepo:       regCache + "/test",
+			Reproducible:    true,
 		}
 		// Populate the cache by doing an initial build
-		_, err := DoBuild(opts)
+		_, err = DoBuild(opts)
+		if err != nil {
+			t.Fatalf("build failed: %+v", err)
+		}
+		_, err = DoCacheProbe(opts)
 		testutil.CheckNoError(t, err)
-		opts.Reproducible = true
+	})
+
+	t.Run("Envs and args", func(t *testing.T) {
+		testDir, fn := setupCacheProbeTests(t)
+		defer fn()
+		dockerFile := `FROM scratch
+ARG foo=bar
+ENV baz=qux
+`
+		err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		testutil.CheckNoError(t, err)
+		regCache := setupCacheRegistry(t)
+		opts := &config.KanikoOptions{
+			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
+			SrcContext:     filepath.Join(testDir, "workspace"),
+			SnapshotMode:   constants.SnapshotModeRedo,
+			Cache:          true,
+			CacheOptions: config.CacheOptions{
+				CacheTTL: time.Hour,
+			},
+			CacheCopyLayers: true,
+			CacheRunLayers:  true,
+			CacheRepo:       regCache + "/test",
+			Reproducible:    true,
+		}
+		// Populate the cache by doing an initial build
+		_, err = DoBuild(opts)
+		if err != nil {
+			t.Fatalf("build failed: %+v", err)
+		}
 		_, err = DoCacheProbe(opts)
 		testutil.CheckNoError(t, err)
 	})
@@ -94,7 +130,8 @@ COPY foo/bar.txt copied/
 		dockerFile := `FROM scratch
 COPY foo/bar.txt copied/
 `
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		testutil.CheckNoError(t, err)
 		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
@@ -107,61 +144,88 @@ COPY foo/bar.txt copied/
 			CacheCopyLayers: true,
 			CacheRunLayers:  true,
 			CacheRepo:       regCache + "/test",
+			Reproducible:    true,
 		}
-		_, err := DoBuild(opts)
-		testutil.CheckNoError(t, err)
-		opts.Reproducible = true
+		_, err = DoBuild(opts)
+		if err != nil {
+			t.Fatalf("build failed: %+v", err)
+		}
 
 		// Modify the Dockerfile to add some extra steps
 		dockerFile = `FROM scratch
 COPY foo/bar.txt copied/
 COPY foo/baz.txt copied/
 `
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		err = os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		testutil.CheckNoError(t, err)
 		_, err = DoCacheProbe(opts)
-		if err == nil || !strings.Contains(err.Error(), "uncached command") {
+		if err == nil || !strings.Contains(err.Error(), "uncached COPY command") {
 			t.Errorf("unexpected error, got %v", err)
 		}
 	})
 
 	t.Run("MultiStage", func(t *testing.T) {
 		t.Skip("TODO: https://github.com/coder/envbuilder/issues/230")
-		testDir, fn := setupMultistageTests(t)
-		defer fn()
-		dockerFile := `
-		FROM scratch as first
-		COPY foo/bam.txt copied/
-		ENV test test
-		
-		From scratch as second
-		COPY --from=first copied/bam.txt output/bam.txt`
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+
+		// Share cache between both builds.
 		regCache := setupCacheRegistry(t)
-		opts := &config.KanikoOptions{
-			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
-			SrcContext:     filepath.Join(testDir, "workspace"),
-			SnapshotMode:   constants.SnapshotModeRedo,
-			Cache:          true,
-			CacheOptions: config.CacheOptions{
-				CacheTTL: time.Hour,
-			},
-			CacheCopyLayers: true,
-			CacheRunLayers:  true,
-			CacheRepo:       regCache + "/test",
+
+		prepare := func() (*config.KanikoOptions, func()) {
+			testDir, fn := setupMultistageTests(t)
+			dockerFile := `
+			FROM scratch as first
+			COPY foo/bam.txt copied/
+			ENV test test
+			
+			From scratch as second
+			COPY --from=first copied/bam.txt output/bam.txt`
+			err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+			testutil.CheckNoError(t, err)
+			opts := &config.KanikoOptions{
+				DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
+				SrcContext:     filepath.Join(testDir, "workspace"),
+				SnapshotMode:   constants.SnapshotModeRedo,
+				Cache:          true,
+				CacheOptions: config.CacheOptions{
+					CacheTTL: time.Hour,
+				},
+				CacheCopyLayers: true,
+				CacheRunLayers:  true,
+				CacheRepo:       regCache + "/test",
+				Reproducible:    true,
+				// ForceUnpack:     true,
+				Destinations: []string{regCache + "/test"},
+			}
+			return opts, fn
 		}
-		_, err := DoBuild(opts)
-		testutil.CheckNoError(t, err)
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
-		opts.Reproducible = true
-		_, err = DoCacheProbe(opts)
-		testutil.CheckNoError(t, err)
-		// Check Image has one layer bam.txt
-		files, err := readDirectory(filepath.Join(testDir, "output"))
+
+		opts, fn := prepare()
+		defer fn()
+		image1, err := DoBuild(opts)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("build failed: %+v", err)
 		}
-		testutil.CheckDeepEqual(t, 1, len(files))
-		testutil.CheckDeepEqual(t, files[0].Name(), "bam.txt")
+		digest1, err := image1.Digest()
+		testutil.CheckNoError(t, err)
+
+		err = DoPush(image1, opts)
+		if err != nil {
+			t.Fatalf("push failed: %+v", err)
+		}
+
+		fn() // Clean up build.
+
+		// Start cache probe from a clean slate.
+		opts, fn = prepare()
+		defer fn()
+		image2, err := DoCacheProbe(opts)
+		testutil.CheckNoError(t, err)
+		digest2, err := image2.Digest()
+		testutil.CheckNoError(t, err)
+
+		if digest1.String() != digest2.String() {
+			t.Errorf("expected %s, got %s", digest1.String(), digest2.String())
+		}
 	})
 }
 

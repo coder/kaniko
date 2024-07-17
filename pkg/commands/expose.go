@@ -63,6 +63,10 @@ func (r *ExposeCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.
 	return nil
 }
 
+func (r *ExposeCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return r.ExecuteCommand(config, buildArgs)
+}
+
 func validProtocol(protocol string) bool {
 	validProtocols := [2]string{"tcp", "udp"}
 	for _, p := range validProtocols {

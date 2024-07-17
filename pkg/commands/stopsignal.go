@@ -53,6 +53,10 @@ func (s *StopSignalCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerf
 	return nil
 }
 
+func (s *StopSignalCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return s.ExecuteCommand(config, buildArgs)
+}
+
 // String returns some information about the command for the image config history
 func (s *StopSignalCommand) String() string {
 	return s.cmd.String()

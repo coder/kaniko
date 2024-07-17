@@ -40,6 +40,10 @@ func (o *OnBuildCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile
 	return nil
 }
 
+func (o *OnBuildCommand) CachedExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
+	return o.ExecuteCommand(config, buildArgs)
+}
+
 // String returns some information about the command for the image config history
 func (o *OnBuildCommand) String() string {
 	return o.cmd.String()
