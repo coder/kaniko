@@ -105,7 +105,10 @@ func CacheHasher() func(string) (string, error) {
 		// likely that the file will be owned by the UID/GID that is running
 		// envbuilder, which in this case is not guaranteed to be root.
 		// Let's just pretend that it is, cross our fingers, and hope for the best.
-		if filepath.Base(p) == "envbuilder" && !fi.IsDir() {
+		lyingAboutOwnership := !fi.IsDir() && (filepath.Base(p) == "envbuilder" ||
+			(filepath.Base(p) == "image" && fi.Size() == 0))
+		if (lyingAboutOwnership) && !fi.IsDir() {
+			logrus.Debugf("CacheHasher lying about ownership of path %q", p)
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
 			h.Write([]byte(","))
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
