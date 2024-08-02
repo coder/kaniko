@@ -24,6 +24,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -95,9 +96,24 @@ func CacheHasher() func(string) (string, error) {
 		}
 		h.Write([]byte(fi.Mode().String()))
 
-		h.Write([]byte(strconv.FormatUint(uint64(fi.Sys().(*syscall.Stat_t).Uid), 36)))
-		h.Write([]byte(","))
-		h.Write([]byte(strconv.FormatUint(uint64(fi.Sys().(*syscall.Stat_t).Gid), 36)))
+		// Cian: this is a disgusting hack, but it removes the need for the
+		// envbuilder binary to be owned by root when doing a cache probe.
+		// We want to ignore UID and GID changes for the envbuilder binary
+		// specifically. When building and pushing an image using the envbuilder
+		// image, the embedded envbuilder binary will most likely be owned by
+		// root:root. However, when performing a cache probe operation, it is more
+		// likely that the file will be owned by the UID/GID that is running
+		// envbuilder, which in this case is not guaranteed to be root.
+		// Let's just pretend that it is, cross our fingers, and hope for the best.
+		if filepath.Base(p) == "envbuilder" && !fi.IsDir() {
+			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
+			h.Write([]byte(","))
+			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
+		} else {
+			h.Write([]byte(strconv.FormatUint(uint64(fi.Sys().(*syscall.Stat_t).Uid), 36)))
+			h.Write([]byte(","))
+			h.Write([]byte(strconv.FormatUint(uint64(fi.Sys().(*syscall.Stat_t).Gid), 36)))
+		}
 
 		if fi.Mode().IsRegular() {
 			f, err := os.Open(p)
