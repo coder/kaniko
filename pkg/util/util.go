@@ -22,10 +22,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -105,10 +107,10 @@ func CacheHasher() func(string) (string, error) {
 		// likely that the file will be owned by the UID/GID that is running
 		// envbuilder, which in this case is not guaranteed to be root.
 		// Let's just pretend that it is, cross our fingers, and hope for the best.
-		lyingAboutOwnership := !fi.IsDir() && (filepath.Base(p) == "envbuilder" ||
-			(filepath.Base(p) == "image" && fi.Size() == 0))
-		if (lyingAboutOwnership) && !fi.IsDir() {
-			logrus.Debugf("CacheHasher lying about ownership of path %q", p)
+		lyingAboutOwnership := !fi.IsDir() &&
+			strings.HasSuffix(filepath.Clean(filepath.Dir(p)), ".envbuilder.tmp")
+		if lyingAboutOwnership {
+			log.Printf("CacheHasher lying about ownership of path %q\n", p)
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
 			h.Write([]byte(","))
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
