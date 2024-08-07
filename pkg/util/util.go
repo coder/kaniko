@@ -22,7 +22,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -110,7 +109,6 @@ func CacheHasher() func(string) (string, error) {
 		lyingAboutOwnership := !fi.IsDir() &&
 			strings.HasSuffix(filepath.Clean(filepath.Dir(p)), ".envbuilder.tmp")
 		if lyingAboutOwnership {
-			log.Printf("CacheHasher lying about ownership of path %q\n", p)
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
 			h.Write([]byte(","))
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
