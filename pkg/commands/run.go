@@ -27,6 +27,7 @@ import (
 	kConfig "github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
 	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
@@ -145,7 +146,7 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		return errors.Wrap(err, "waiting for process to exit")
 	}
 
-	//it's not an error if there are no grandchildren
+	// it's not an error if there are no grandchildren
 	if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil && err.Error() != "no such process" {
 		return err
 	}
@@ -191,7 +192,6 @@ func (r *RunCommand) ProvidesFilesToSnapshot() bool {
 
 // CacheCommand returns true since this command should be cached
 func (r *RunCommand) CacheCommand(img v1.Image) DockerCommand {
-
 	return &CachingRunCommand{
 		img:       img,
 		cmd:       r.cmd,
@@ -300,7 +300,7 @@ func (cr *CachingRunCommand) MetadataOnly() bool {
 
 // todo: this should create the workdir if it doesn't exist, atleast this is what docker does
 func setWorkDirIfExists(workdir string) string {
-	if _, err := os.Lstat(workdir); err == nil {
+	if _, err := filesystem.FS.Lstat(workdir); err == nil {
 		return workdir
 	}
 	return ""

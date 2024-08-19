@@ -19,13 +19,13 @@ package snapshot
 import (
 	"archive/tar"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 	"github.com/pkg/errors"
@@ -52,7 +52,7 @@ func TestSnapshotFSFileChange(t *testing.T) {
 		t.Fatalf("Error taking snapshot of fs: %s", err)
 	}
 
-	f, err := os.Open(tarPath)
+	f, err := filesystem.FS.Open(tarPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestSnapshotFSChangePermissions(t *testing.T) {
 	// Change permissions on a file
 	batPath := filepath.Join(testDir, "bar/bat")
 	batPathWithoutLeadingSlash := filepath.Join(testDirWithoutLeadingSlash, "bar/bat")
-	if err := os.Chmod(batPath, 0600); err != nil {
+	if err := filesystem.FS.Chmod(batPath, 0o600); err != nil {
 		t.Fatalf("Error changing permissions on %s: %v", batPath, err)
 	}
 	// Take another snapshot
@@ -145,7 +145,7 @@ func TestSnapshotFSChangePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error taking snapshot of fs: %s", err)
 	}
-	f, err := os.Open(tarPath)
+	f, err := filesystem.FS.Open(tarPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,12 +197,12 @@ func TestSnapshotFSReplaceDirWithLink(t *testing.T) {
 
 	// replace non-empty directory "bar" with link to file "foo"
 	bar := filepath.Join(testDir, "bar")
-	err = os.RemoveAll(bar)
+	err = filesystem.FS.RemoveAll(bar)
 	if err != nil {
 		t.Fatal(err)
 	}
 	foo := filepath.Join(testDir, "foo")
-	err = os.Symlink(foo, bar)
+	err = filesystem.FS.Symlink(foo, bar)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestSnapshotFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tarPath)
+	defer filesystem.FS.Remove(tarPath)
 
 	expectedFiles := []string{
 		filepath.Join(testDirWithoutLeadingSlash, "foo"),
@@ -287,7 +287,7 @@ func TestEmptySnapshotFS(t *testing.T) {
 		t.Fatalf("Error taking snapshot of fs: %s", err)
 	}
 
-	f, err := os.Open(tarPath)
+	f, err := filesystem.FS.Open(tarPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,6 @@ func TestEmptySnapshotFS(t *testing.T) {
 }
 
 func TestFileWithLinks(t *testing.T) {
-
 	link := "baz/link"
 	tcs := []struct {
 		name           string
@@ -386,7 +385,6 @@ func TestSnapshotPreservesFileOrder(t *testing.T) {
 
 		// Take a snapshot
 		tarPath, err := snapshotter.TakeSnapshot(filesToSnapshot, false, false)
-
 		if err != nil {
 			t.Fatalf("Error taking snapshot of fs: %s", err)
 		}
@@ -474,7 +472,7 @@ func TestSnapshotIncludesParentDirBeforeWhiteoutFile(t *testing.T) {
 	// Delete files
 	filesToDelete := []string{"kaniko/file", "bar"}
 	for _, fn := range filesToDelete {
-		err = os.RemoveAll(filepath.Join(testDir, fn))
+		err = filesystem.FS.RemoveAll(filepath.Join(testDir, fn))
 		if err != nil {
 			t.Fatalf("Error deleting file: %s", err)
 		}
@@ -555,7 +553,7 @@ func TestSnapshotPreservesWhiteoutOrder(t *testing.T) {
 
 		// Delete all files
 		for p := range newFiles {
-			err := os.Remove(filepath.Join(testDir, p))
+			err := filesystem.FS.Remove(filepath.Join(testDir, p))
 			if err != nil {
 				t.Fatalf("Error deleting file: %s", err)
 			}
@@ -597,7 +595,7 @@ func TestSnapshotOmitsUnameGname(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f, err := os.Open(tarPath)
+	f, err := filesystem.FS.Open(tarPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,11 +612,10 @@ func TestSnapshotOmitsUnameGname(t *testing.T) {
 			t.Fatalf("Expected Uname/Gname for %s to be empty: Uname = '%s', Gname = '%s'", hdr.Name, hdr.Uname, hdr.Gname)
 		}
 	}
-
 }
 
 func setupSymlink(dir string, link string, target string) error {
-	return os.Symlink(target, filepath.Join(dir, link))
+	return filesystem.FS.Symlink(target, filepath.Join(dir, link))
 }
 
 func sortAndCompareFilepaths(t *testing.T, testDir string, expected []string, actual []string) {
@@ -673,7 +670,7 @@ func setUpTest(t *testing.T) (string, *Snapshotter, func(), error) {
 }
 
 func listFilesInTar(path string) ([]string, error) {
-	f, err := os.Open(path)
+	f, err := filesystem.FS.Open(path)
 	if err != nil {
 		return nil, err
 	}

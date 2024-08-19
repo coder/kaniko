@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
 	"github.com/docker/docker/pkg/archive"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -88,10 +89,13 @@ var ignorelist = append([]IgnoreListEntry{}, defaultIgnoreList...)
 var volumes = []string{}
 
 // skipKanikoDir opts to skip the '/kaniko' dir for otiai10.copy which should be ignored in root
-var skipKanikoDir = otiai10Cpy.Options{
-	Skip: func(info os.FileInfo, src, dest string) (bool, error) {
-		return strings.HasSuffix(src, "/kaniko"), nil
-	},
+var skipKanikoDir = func() otiai10Cpy.Options {
+	return otiai10Cpy.Options{
+		Skip: func(info os.FileInfo, src, dest string) (bool, error) {
+			return strings.HasSuffix(src, "/kaniko"), nil
+		},
+		FS: filesystem.IOFS(),
+	}
 }
 
 type FileContext struct {
@@ -269,7 +273,7 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 					continue
 				}
 
-				if err := os.RemoveAll(path); err != nil {
+				if err := filesystem.FS.RemoveAll(path); err != nil {
 					return nil, errors.Wrapf(err, "removing whiteout %s", hdr.Name)
 				}
 
@@ -321,7 +325,7 @@ func (r *printAfterReader) Read(p []byte) (n int, err error) {
 // DeleteFilesystem deletes the extracted image file system
 func DeleteFilesystem() error {
 	logrus.Info("Deleting filesystem...")
-	return filepath.Walk(config.RootDir, func(path string, info os.FileInfo, err error) error {
+	return filesystem.Walk(config.RootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// ignore errors when deleting.
 			return nil //nolint:nilerr
@@ -345,13 +349,13 @@ func DeleteFilesystem() error {
 		if path == config.RootDir {
 			return nil
 		}
-		return os.RemoveAll(path)
+		return filesystem.FS.RemoveAll(path)
 	})
 }
 
 // isExists returns true if path exists
 func isExist(path string) bool {
-	if _, err := os.Stat(path); err == nil {
+	if _, err := filesystem.FS.Stat(path); err == nil {
 		return true
 	}
 	return false
@@ -411,11 +415,11 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 
 		// It's possible a file is in the tar before its directory,
 		// or a file was copied over a directory prior to now
-		fi, err := os.Stat(dir)
+		fi, err := filesystem.FS.Stat(dir)
 		if os.IsNotExist(err) || !fi.IsDir() {
 			logrus.Debugf("Base %s for file %s does not exist. Creating.", base, path)
 
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+			if err := filesystem.FS.MkdirAll(dir, 0o755); err != nil {
 				return err
 			}
 		}
@@ -423,12 +427,12 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 		// Check if something already exists at path (symlinks etc.)
 		// If so, delete it
 		if FilepathExists(path) {
-			if err := os.RemoveAll(path); err != nil {
+			if err := filesystem.FS.RemoveAll(path); err != nil {
 				return errors.Wrapf(err, "error removing %s to make way for new file.", path)
 			}
 		}
 
-		currFile, err := os.Create(path)
+		currFile, err := filesystem.FS.Create(path)
 		if err != nil {
 			return err
 		}
@@ -467,13 +471,13 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 			return nil
 		}
 		// The base directory for a link may not exist before it is created.
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := filesystem.FS.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 		// Check if something already exists at path
 		// If so, delete it
 		if FilepathExists(path) {
-			if err := os.RemoveAll(path); err != nil {
+			if err := filesystem.FS.RemoveAll(path); err != nil {
 				return errors.Wrapf(err, "error removing %s to make way for new link", hdr.Name)
 			}
 		}
@@ -485,17 +489,17 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 	case tar.TypeSymlink:
 		logrus.Tracef("Symlink from %s to %s", hdr.Linkname, path)
 		// The base directory for a symlink may not exist before it is created.
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := filesystem.FS.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 		// Check if something already exists at path
 		// If so, delete it
 		if FilepathExists(path) {
-			if err := os.RemoveAll(path); err != nil {
+			if err := filesystem.FS.RemoveAll(path); err != nil {
 				return errors.Wrapf(err, "error removing %s to make way for new symlink", hdr.Name)
 			}
 		}
-		if err := os.Symlink(hdr.Linkname, path); err != nil {
+		if err := filesystem.FS.Symlink(hdr.Linkname, path); err != nil {
 			return err
 		}
 	}
@@ -555,7 +559,7 @@ func checkIgnoreListRoot(root string) bool {
 // From: https://www.kernel.org/doc/Documentation/filesystems/proc.txt
 func DetectFilesystemIgnoreList(path string) error {
 	logrus.Trace("Detecting filesystem ignore list")
-	f, err := os.Open(path)
+	f, err := filesystem.FS.Open(path)
 	if err != nil {
 		return err
 	}
@@ -597,7 +601,7 @@ func RelativeFiles(fp string, root string) ([]string, error) {
 	fullPath := filepath.Join(root, fp)
 	cleanedRoot := filepath.Clean(root)
 	logrus.Debugf("Getting files and contents at root %s for %s", root, fullPath)
-	err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
+	err := filesystem.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -653,14 +657,14 @@ func ParentDirectoriesWithoutLeadingSlash(path string) []string {
 
 // FilepathExists returns true if the path exists
 func FilepathExists(path string) bool {
-	_, err := os.Lstat(path)
+	_, err := filesystem.FS.Lstat(path)
 	return !os.IsNotExist(err)
 }
 
 // resetFileOwnershipIfNotMatching function changes ownership of the file at path to newUID and newGID.
 // If the ownership already matches, chown is not executed.
 func resetFileOwnershipIfNotMatching(path string, newUID, newGID uint32) error {
-	fsInfo, err := os.Lstat(path)
+	fsInfo, err := filesystem.FS.Lstat(path)
 	if err != nil {
 		return errors.Wrap(err, "getting stat of present file")
 	}
@@ -669,7 +673,7 @@ func resetFileOwnershipIfNotMatching(path string, newUID, newGID uint32) error {
 		return fmt.Errorf("can't convert fs.FileInfo of %v to linux syscall.Stat_t", path)
 	}
 	if stat.Uid != newUID && stat.Gid != newGID {
-		err = os.Chown(path, int(newUID), int(newGID))
+		err = filesystem.FS.Chown(path, int(newUID), int(newGID))
 		if err != nil {
 			return errors.Wrap(err, "reseting file ownership to root")
 		}
@@ -694,18 +698,18 @@ func CreateFile(path string, reader io.Reader, perm os.FileMode, uid uint32, gid
 	}
 
 	var renamed string
-	dest, err := os.Create(path)
+	dest, err := filesystem.FS.Create(path)
 	if err != nil {
 		if !errors.Is(err, syscall.ETXTBSY) {
 			return errors.Wrap(err, "creating file")
 		}
 		// If the file is busy, just write to a temp file and
 		// move to dest.
-		dest, err = os.CreateTemp(os.TempDir(), "")
+		dest, err = filesystem.CreateTemp(os.TempDir(), "")
 		if err != nil {
 			return errors.Wrap(err, "create temp file")
 		}
-		defer os.Remove(dest.Name())
+		defer filesystem.FS.Remove(dest.Name())
 		renamed = dest.Name()
 	}
 	defer dest.Close()
@@ -713,7 +717,7 @@ func CreateFile(path string, reader io.Reader, perm os.FileMode, uid uint32, gid
 		return errors.Wrap(err, "copying file")
 	}
 	if renamed != "" {
-		if err := os.Rename(renamed, path); err != nil {
+		if err := filesystem.FS.Rename(renamed, path); err != nil {
 			return errors.Wrap(err, "rename temp file")
 		}
 	}
@@ -757,7 +761,7 @@ func DownloadFileToDest(rawurl, dest string, uid, gid int64, chmod fs.FileMode) 
 			mTime = parsedMTime
 		}
 	}
-	return os.Chtimes(dest, mTime, mTime)
+	return filesystem.FS.Chtimes(dest, mTime, mTime)
 }
 
 // DetermineTargetFileOwnership returns the user provided uid/gid combination.
@@ -786,7 +790,7 @@ func CopyDir(src, dest string, context FileContext, uid, gid int64, chmod fs.Fil
 			logrus.Debugf("%s found in .dockerignore, ignoring", src)
 			continue
 		}
-		fi, err := os.Lstat(fullPath)
+		fi, err := filesystem.FS.Lstat(fullPath)
 		if err != nil {
 			return nil, errors.Wrap(err, "copying dir")
 		}
@@ -830,18 +834,18 @@ func CopySymlink(src, dest string, context FileContext) (bool, error) {
 		return true, nil
 	}
 	if FilepathExists(dest) {
-		if err := os.RemoveAll(dest); err != nil {
+		if err := filesystem.FS.RemoveAll(dest); err != nil {
 			return false, err
 		}
 	}
 	if err := createParentDirectory(dest, DoNotChangeUID, DoNotChangeGID); err != nil {
 		return false, err
 	}
-	link, err := os.Readlink(src)
+	link, err := filesystem.FS.Readlink(src)
 	if err != nil {
 		logrus.Debugf("Could not read link for %s", src)
 	}
-	return false, os.Symlink(link, dest)
+	return false, filesystem.FS.Symlink(link, dest)
 }
 
 // CopyFile copies the file at src to dest
@@ -856,12 +860,12 @@ func CopyFile(src, dest string, context FileContext, uid, gid int64, chmod fs.Fi
 		// See iusse #904 for an example.
 		return false, nil
 	}
-	fi, err := os.Stat(src)
+	fi, err := filesystem.FS.Stat(src)
 	if err != nil {
 		return false, err
 	}
 	logrus.Debugf("Copying file %s to %s", src, dest)
-	srcFile, err := os.Open(src)
+	srcFile, err := filesystem.FS.Open(src)
 	if err != nil {
 		return false, err
 	}
@@ -895,7 +899,7 @@ func getExcludedFiles(dockerfilePath, buildcontext string) ([]string, error) {
 		return nil, nil
 	}
 	logrus.Infof("Using dockerignore file: %v", path)
-	contents, err := os.ReadFile(path)
+	contents, err := filesystem.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "parsing .dockerignore")
 	}
@@ -955,10 +959,10 @@ func Volumes() []string {
 
 func MkdirAllWithPermissions(path string, mode os.FileMode, uid, gid int64) error {
 	// Check if a file already exists on the path, if yes then delete it
-	info, err := os.Stat(path)
+	info, err := filesystem.FS.Stat(path)
 	if err == nil && !info.IsDir() {
 		logrus.Tracef("Removing file because it needs to be a directory %s", path)
-		if err := os.Remove(path); err != nil {
+		if err := filesystem.FS.Remove(path); err != nil {
 			return errors.Wrapf(err, "error removing %s to make way for new directory.", path)
 		}
 	}
@@ -966,7 +970,7 @@ func MkdirAllWithPermissions(path string, mode os.FileMode, uid, gid int64) erro
 		return errors.Wrapf(err, "error calling stat on %s.", path)
 	}
 
-	if err := os.MkdirAll(path, mode); err != nil {
+	if err := filesystem.FS.MkdirAll(path, mode); err != nil {
 		return err
 	}
 	if uid > math.MaxUint32 || gid > math.MaxUint32 {
@@ -978,21 +982,21 @@ func MkdirAllWithPermissions(path string, mode os.FileMode, uid, gid int64) erro
 			),
 		)
 	}
-	if err := os.Chown(path, int(uid), int(gid)); err != nil {
+	if err := filesystem.FS.Chown(path, int(uid), int(gid)); err != nil {
 		return err
 	}
 	// In some cases, MkdirAll doesn't change the permissions, so run Chmod
 	// Must chmod after chown because chown resets the file mode.
-	return os.Chmod(path, mode)
+	return filesystem.FS.Chmod(path, mode)
 }
 
 func setFilePermissions(path string, mode os.FileMode, uid, gid int) error {
-	if err := os.Chown(path, uid, gid); err != nil {
+	if err := filesystem.FS.Chown(path, uid, gid); err != nil {
 		return err
 	}
 	// manually set permissions on file, since the default umask (022) will interfere
 	// Must chmod after chown because chown resets the file mode.
-	return os.Chmod(path, mode)
+	return filesystem.FS.Chmod(path, mode)
 }
 
 func setFileTimes(path string, aTime, mTime time.Time) error {
@@ -1011,7 +1015,7 @@ func setFileTimes(path string, aTime, mTime time.Time) error {
 
 	// We set AccessTime because its a required arg but we only care about
 	// ModTime. The file will get accessed again so AccessTime will change.
-	if err := os.Chtimes(path, aTime, mTime); err != nil {
+	if err := filesystem.FS.Chtimes(path, aTime, mTime); err != nil {
 		return errors.Wrapf(
 			err,
 			"couldn't modify times: atime %v mtime %v",
@@ -1027,13 +1031,20 @@ func setFileTimes(path string, aTime, mTime time.Time) error {
 // Make directory if directory does not exist
 func CreateTargetTarfile(tarpath string) (*os.File, error) {
 	baseDir := filepath.Dir(tarpath)
-	if _, err := os.Lstat(baseDir); os.IsNotExist(err) {
+	if _, err := filesystem.FS.Lstat(baseDir); os.IsNotExist(err) {
 		logrus.Debugf("BaseDir %s for file %s does not exist. Creating.", baseDir, tarpath)
-		if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		if err := filesystem.FS.MkdirAll(baseDir, 0o755); err != nil {
 			return nil, err
 		}
 	}
-	return os.Create(tarpath)
+	f, err := filesystem.FS.Create(tarpath)
+	if err != nil {
+		return nil, err
+	}
+	if osf, ok := f.(*os.File); ok {
+		return osf, nil
+	}
+	return nil, errors.New("CreateTargetTarfile failed: file is not a *os.File")
 }
 
 // Returns true if a file is a symlink
@@ -1047,7 +1058,7 @@ func GetSymLink(path string) (string, error) {
 	if err := getSymlink(path); err != nil {
 		return "", err
 	}
-	return os.Readlink(path)
+	return filesystem.FS.Readlink(path)
 }
 
 func EvalSymLink(path string) (string, error) {
@@ -1058,7 +1069,7 @@ func EvalSymLink(path string) (string, error) {
 }
 
 func getSymlink(path string) error {
-	fi, err := os.Lstat(path)
+	fi, err := filesystem.FS.Lstat(path)
 	if err != nil {
 		return err
 	}
@@ -1074,27 +1085,27 @@ func getSymlink(path string) error {
 func CopyFileOrSymlink(src string, destDir string, root string) error {
 	destFile := filepath.Join(destDir, src)
 	src = filepath.Join(root, src)
-	fi, err := os.Lstat(src)
+	fi, err := filesystem.FS.Lstat(src)
 	if err != nil {
 		return errors.Wrap(err, "getting file info")
 	}
 	if IsSymlink(fi) {
-		link, err := os.Readlink(src)
+		link, err := filesystem.FS.Readlink(src)
 		if err != nil {
 			return errors.Wrap(err, "copying file or symlink")
 		}
 		if err := createParentDirectory(destFile, DoNotChangeUID, DoNotChangeGID); err != nil {
 			return err
 		}
-		return os.Symlink(link, destFile)
+		return filesystem.FS.Symlink(link, destFile)
 	}
-	if err := otiai10Cpy.Copy(src, destFile, skipKanikoDir); err != nil {
+	if err := otiai10Cpy.Copy(src, destFile, skipKanikoDir()); err != nil {
 		return errors.Wrap(err, "copying file")
 	}
 	if err := CopyOwnership(src, destDir, root); err != nil {
 		return errors.Wrap(err, "copying ownership")
 	}
-	if err := os.Chmod(destFile, fi.Mode()); err != nil {
+	if err := filesystem.FS.Chmod(destFile, fi.Mode()); err != nil {
 		return errors.Wrap(err, "copying file mode")
 	}
 	return nil
@@ -1102,7 +1113,7 @@ func CopyFileOrSymlink(src string, destDir string, root string) error {
 
 // CopyOwnership copies the file or directory ownership recursively at src to dest
 func CopyOwnership(src string, destDir string, root string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+	return filesystem.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -1138,18 +1149,18 @@ func CopyOwnership(src string, destDir string, root string) error {
 			return nil
 		}
 
-		info, err = os.Stat(path)
+		info, err = filesystem.FS.Stat(path)
 		if err != nil {
 			return errors.Wrap(err, "reading ownership")
 		}
 		stat := info.Sys().(*syscall.Stat_t)
-		return os.Chown(destPath, int(stat.Uid), int(stat.Gid))
+		return filesystem.FS.Chown(destPath, int(stat.Uid), int(stat.Gid))
 	})
 }
 
 func createParentDirectory(path string, uid int, gid int) error {
 	baseDir := filepath.Dir(path)
-	if info, err := os.Lstat(baseDir); os.IsNotExist(err) {
+	if info, err := filesystem.FS.Lstat(baseDir); os.IsNotExist(err) {
 		logrus.Tracef("BaseDir %s for file %s does not exist. Creating.", baseDir, path)
 
 		dir := baseDir
@@ -1165,11 +1176,17 @@ func createParentDirectory(path string, uid int, gid int) error {
 		for i := len(dirs) - 1; i >= 0; i-- {
 			dir := dirs[i]
 
-			if _, err := os.Lstat(dir); os.IsNotExist(err) {
-				os.Mkdir(dir, 0o755)
+			if _, err := filesystem.FS.Lstat(dir); os.IsNotExist(err) {
+				err = filesystem.FS.Mkdir(dir, 0o755)
+				if err != nil {
+					return err
+				}
 				if uid != DoNotChangeUID {
 					if gid != DoNotChangeGID {
-						os.Chown(dir, uid, gid)
+						err = filesystem.FS.Chown(dir, uid, gid)
+						if err != nil {
+							return err
+						}
 					} else {
 						return errors.New(fmt.Sprintf("UID=%d but GID=-1, i.e. it is not set for %s", uid, dir))
 					}
@@ -1298,7 +1315,7 @@ func GetFSInfoMap(dir string, existing map[string]os.FileInfo) (map[string]os.Fi
 				}
 				return nil
 			}
-			if fi, err := os.Lstat(path); err == nil {
+			if fi, err := filesystem.FS.Lstat(path); err == nil {
 				if fiPrevious, ok := existing[path]; ok {
 					// check if file changed
 					if !isSame(fiPrevious, fi) {

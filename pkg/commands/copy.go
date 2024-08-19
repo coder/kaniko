@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	kConfig "github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -73,7 +74,7 @@ func (c *CopyCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bu
 	for _, src := range srcs {
 		fullPath := filepath.Join(c.fileContext.Root, src)
 
-		fi, err := os.Lstat(fullPath)
+		fi, err := filesystem.FS.Lstat(fullPath)
 		if err != nil {
 			return errors.Wrap(err, "could not copy source")
 		}
@@ -265,7 +266,7 @@ func resolveIfSymlink(destPath string) (string, error) {
 
 	newPath := destPath
 	for newPath != "/" {
-		_, err := os.Lstat(newPath)
+		_, err := filesystem.FS.Lstat(newPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				dir, file := filepath.Split(newPath)

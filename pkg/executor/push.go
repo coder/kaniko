@@ -30,6 +30,7 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
 	"github.com/GoogleContainerTools/kaniko/pkg/creds"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/pkg/version"
@@ -62,15 +63,13 @@ const (
 	DummyDestination    = "docker.io/unset-repo/unset-image-name"
 )
 
-var (
-	// known tag immutability errors
-	errTagImmutable = []string{
-		// https://cloud.google.com/artifact-registry/docs/docker/troubleshoot#push
-		"The repository has enabled tag immutability",
-		// https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-tag-mutability.html
-		"cannot be overwritten because the repository is immutable",
-	}
-)
+// known tag immutability errors
+var errTagImmutable = []string{
+	// https://cloud.google.com/artifact-registry/docs/docker/troubleshoot#push
+	"The repository has enabled tag immutability",
+	// https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-tag-mutability.html
+	"cannot be overwritten because the repository is immutable",
+}
 
 func (w *withUserAgent) RoundTrip(r *http.Request) (*http.Response, error) {
 	ua := []string{fmt.Sprintf("kaniko/%s", version.Version())}
@@ -158,14 +157,14 @@ func writeDigestFile(path string, digestByteArray []byte) error {
 	}
 
 	parentDir := filepath.Dir(path)
-	if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(parentDir, 0700); err != nil {
+	if _, err := filesystem.FS.Stat(parentDir); os.IsNotExist(err) {
+		if err := filesystem.FS.MkdirAll(parentDir, 0o700); err != nil {
 			logrus.Debugf("Error creating %s, %s", parentDir, err)
 			return err
 		}
 		logrus.Tracef("Created directory %v", parentDir)
 	}
-	return os.WriteFile(path, digestByteArray, 0644)
+	return filesystem.WriteFile(path, digestByteArray, 0o644)
 }
 
 // DoPush is responsible for pushing image to the destinations specified in opts.

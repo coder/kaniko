@@ -31,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/minio/highwayhash"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -48,7 +49,7 @@ func Hasher() func(string) (string, error) {
 	key := make([]byte, highwayhash.Size)
 	hasher := func(p string) (string, error) {
 		h, _ := highwayhash.New(key)
-		fi, err := os.Lstat(p)
+		fi, err := filesystem.FS.Lstat(p)
 		if err != nil {
 			return "", err
 		}
@@ -64,7 +65,7 @@ func Hasher() func(string) (string, error) {
 			if capability != nil {
 				h.Write(capability)
 			}
-			f, err := os.Open(p)
+			f, err := filesystem.FS.Open(p)
 			if err != nil {
 				return "", err
 			}
@@ -75,7 +76,7 @@ func Hasher() func(string) (string, error) {
 				return "", err
 			}
 		} else if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
-			linkPath, err := os.Readlink(p)
+			linkPath, err := filesystem.FS.Readlink(p)
 			if err != nil {
 				return "", err
 			}
@@ -91,7 +92,7 @@ func Hasher() func(string) (string, error) {
 func CacheHasher() func(string) (string, error) {
 	hasher := func(p string) (string, error) {
 		h := md5.New()
-		fi, err := os.Lstat(p)
+		fi, err := filesystem.FS.Lstat(p)
 		if err != nil {
 			return "", err
 		}
@@ -119,7 +120,7 @@ func CacheHasher() func(string) (string, error) {
 		}
 
 		if fi.Mode().IsRegular() {
-			f, err := os.Open(p)
+			f, err := filesystem.FS.Open(p)
 			if err != nil {
 				return "", err
 			}
@@ -128,7 +129,7 @@ func CacheHasher() func(string) (string, error) {
 				return "", err
 			}
 		} else if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
-			linkPath, err := os.Readlink(p)
+			linkPath, err := filesystem.FS.Readlink(p)
 			if err != nil {
 				return "", err
 			}
@@ -145,7 +146,7 @@ func CacheHasher() func(string) (string, error) {
 func MtimeHasher() func(string) (string, error) {
 	hasher := func(p string) (string, error) {
 		h := md5.New()
-		fi, err := os.Lstat(p)
+		fi, err := filesystem.FS.Lstat(p)
 		if err != nil {
 			return "", err
 		}
@@ -160,7 +161,7 @@ func MtimeHasher() func(string) (string, error) {
 func RedoHasher() func(string) (string, error) {
 	hasher := func(p string) (string, error) {
 		h := md5.New()
-		fi, err := os.Lstat(p)
+		fi, err := filesystem.FS.Lstat(p)
 		if err != nil {
 			return "", err
 		}

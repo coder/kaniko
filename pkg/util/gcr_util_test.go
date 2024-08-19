@@ -20,6 +20,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 )
 
 const (
@@ -33,7 +35,7 @@ func TestDockerConfLocationWithInvalidFileLocation(t *testing.T) {
 		t.Fatalf("Failed to unset DOCKER_CONFIG: %v", err)
 	}
 	tmpDir := t.TempDir()
-	random := "fdgdsfrdfgdf-fdfsf-24dsgfd" //replace with a really random string
+	random := "fdgdsfrdfgdf-fdfsf-24dsgfd" // replace with a really random string
 	file := filepath.Join(tmpDir, random)  // an random file name, shouldn't exist
 	if err := os.Setenv(DockerConfigEnvKey, file); err != nil {
 		t.Fatalf("Failed to unset DOCKER_CONFIG: %v", err)
@@ -61,7 +63,7 @@ func TestDockerConfLocation(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	dir := filepath.Join(tmpDir, "/kaniko/.docker")
-	os.MkdirAll(dir, os.ModePerm)
+	filesystem.FS.MkdirAll(dir, os.ModePerm)
 	if err := os.Setenv(DockerConfigEnvKey, dir); err != nil {
 		t.Fatalf("Failed to set DOCKER_CONFIG: %v", err)
 	}
@@ -100,11 +102,11 @@ func TestDockerConfLocationWithFileLocation(t *testing.T) {
 	if err := os.Unsetenv(DockerConfigEnvKey); err != nil {
 		t.Fatalf("Failed to unset DOCKER_CONFIG: %v", err)
 	}
-	file, err := os.CreateTemp("", "docker.conf")
+	file, err := filesystem.CreateTemp("", "docker.conf")
 	if err != nil {
 		t.Fatalf("could not create temp file: %s", err)
 	}
-	defer os.Remove(file.Name())
+	defer filesystem.FS.Remove(file.Name())
 	if err := os.Setenv(DockerConfigEnvKey, file.Name()); err != nil {
 		t.Fatalf("Failed to unset DOCKER_CONFIG: %v", err)
 	}

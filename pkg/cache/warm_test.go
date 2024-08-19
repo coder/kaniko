@@ -18,11 +18,11 @@ package cache
 
 import (
 	"bytes"
-	"os"
 	"testing"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/fakes"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 )
 
@@ -118,11 +118,11 @@ func TestParseDockerfile_SingleStageDockerfile(t *testing.T) {
 	dockerfile := `FROM alpine:latest
 LABEL maintainer="alexezio"
 `
-	tmpfile, err := os.CreateTemp("", "example")
+	tmpfile, err := filesystem.CreateTemp("", "example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer filesystem.FS.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write([]byte(dockerfile)); err != nil {
 		t.Fatal(err)
@@ -151,11 +151,11 @@ LABEL maintainer="alexezio"
 FROM alpine:latest as RUNNER
 LABEL maintainer="alexezio"
 `
-	tmpfile, err := os.CreateTemp("", "example")
+	tmpfile, err := filesystem.CreateTemp("", "example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer filesystem.FS.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write([]byte(dockerfile)); err != nil {
 		t.Fatal(err)
@@ -185,11 +185,11 @@ func TestParseDockerfile_ArgsDockerfile(t *testing.T) {
 	dockerfile := `ARG version=latest
 FROM golang:${version}
 `
-	tmpfile, err := os.CreateTemp("", "example")
+	tmpfile, err := filesystem.CreateTemp("", "example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer filesystem.FS.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write([]byte(dockerfile)); err != nil {
 		t.Fatal(err)
@@ -224,11 +224,11 @@ func TestParseDockerfile_MissingsDockerfile(t *testing.T) {
 
 func TestParseDockerfile_InvalidsDockerfile(t *testing.T) {
 	dockerfile := "This is a invalid dockerfile"
-	tmpfile, err := os.CreateTemp("", "example")
+	tmpfile, err := filesystem.CreateTemp("", "example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer filesystem.FS.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write([]byte(dockerfile)); err != nil {
 		t.Fatal(err)

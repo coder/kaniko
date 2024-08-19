@@ -22,6 +22,7 @@ import (
 	"os"
 
 	kConfig "github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -35,7 +36,7 @@ type Tar struct {
 // UnpackTarFromBuildContext unpack the compressed tar file
 func (t *Tar) UnpackTarFromBuildContext() (string, error) {
 	directory := kConfig.BuildContextDir
-	if err := os.MkdirAll(directory, 0750); err != nil {
+	if err := filesystem.FS.MkdirAll(directory, 0o750); err != nil {
 		return "", errors.Wrap(err, "unpacking tar from build context")
 	}
 	if t.context == "stdin" {

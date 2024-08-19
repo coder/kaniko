@@ -19,6 +19,8 @@ package util
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 )
 
 // DockerConfLocation returns the file system location of the Docker
@@ -28,7 +30,7 @@ import (
 func DockerConfLocation() string {
 	configFile := "config.json"
 	if dockerConfig := os.Getenv("DOCKER_CONFIG"); dockerConfig != "" {
-		file, err := os.Stat(dockerConfig)
+		file, err := filesystem.FS.Stat(dockerConfig)
 		if err == nil {
 			if file.IsDir() {
 				return filepath.Join(dockerConfig, configFile)

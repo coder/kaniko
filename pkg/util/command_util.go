@@ -32,8 +32,10 @@ import (
 	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/afero"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 )
 
 // for testing
@@ -167,7 +169,7 @@ func matchSources(srcs, files []string) ([]string, error) {
 
 func IsDestDir(path string) bool {
 	// try to stat the path
-	fileInfo, err := os.Stat(path)
+	fileInfo, err := filesystem.FS.Stat(path)
 	if err != nil {
 		// fall back to string-based determination
 		return strings.HasSuffix(path, pathSeparator) || path == "."
@@ -236,7 +238,7 @@ func URLDestinationFilepath(rawurl, dest, cwd string, envs []string) (string, er
 	return destPath, nil
 }
 
-func IsSrcsValid(srcsAndDest instructions.SourcesAndDest, resolvedSources []string, fileContext FileContext) error {
+func IsSrcsValid(srcsAndDest instructions.SourcesAndDest, resolvedSources []string, fileContext FileContext, vfss ...afero.Fs) error {
 	srcs := srcsAndDest.SourcePaths
 	dest := srcsAndDest.DestPath
 
@@ -259,7 +261,7 @@ func IsSrcsValid(srcsAndDest instructions.SourcesAndDest, resolvedSources []stri
 			return nil
 		}
 		path := filepath.Join(fileContext.Root, resolvedSources[0])
-		fi, err := os.Lstat(path)
+		fi, err := filesystem.FS.Lstat(path)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to get fileinfo for %v", path))
 		}

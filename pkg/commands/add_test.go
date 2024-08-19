@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -38,13 +39,12 @@ type TarList struct {
 
 func createFile(tempDir string) error {
 	fileName := filepath.Join(tempDir, "text.txt")
-	file, err := os.Create(fileName)
+	file, err := filesystem.FS.Create(fileName)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-
-	err = os.WriteFile(fileName, []byte("This is a test!\n"), 0644)
+	err = filesystem.WriteFile(fileName, []byte("This is a test!\n"), 0o644)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func createFile(tempDir string) error {
 
 func createTar(tempDir string, toCreate TarList) error {
 	if toCreate.compressed {
-		file, err := os.OpenFile(filepath.Join(tempDir, toCreate.tarName), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		file, err := filesystem.FS.OpenFile(filepath.Join(tempDir, toCreate.tarName), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func createTar(tempDir string, toCreate TarList) error {
 		return nil
 	}
 
-	tarFile, err := os.Create(filepath.Join(tempDir, toCreate.tarName))
+	tarFile, err := filesystem.FS.Create(filepath.Join(tempDir, toCreate.tarName))
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func setupAddTest(t *testing.T) string {
 		t.Errorf("couldn't create the file %v", err)
 	}
 
-	var tarFiles = []TarList{
+	tarFiles := []TarList{
 		{
 			tarName:    "a.tar",
 			directory:  "a",
@@ -104,7 +104,7 @@ func setupAddTest(t *testing.T) string {
 	// Create directories with files and then create tar
 	for _, toCreate := range tarFiles {
 
-		err = os.Mkdir(filepath.Join(tempDir, toCreate.directory), 0755)
+		err = filesystem.FS.Mkdir(filepath.Join(tempDir, toCreate.directory), 0o755)
 		if err != nil {
 			t.Errorf("couldn't create directory %v", err)
 		}
@@ -114,7 +114,6 @@ func setupAddTest(t *testing.T) string {
 			t.Errorf("couldn't create file inside directory %v", err)
 		}
 		err = createTar(tempDir, toCreate)
-
 		if err != nil {
 			t.Errorf("couldn't create the tar %v", err)
 		}
@@ -134,7 +133,7 @@ func Test_AddCommand(t *testing.T) {
 	}
 	buildArgs := dockerfile.NewBuildArgs([]string{})
 
-	var addTests = []struct {
+	addTests := []struct {
 		name           string
 		sourcesAndDest []string
 		expectedDest   []string
@@ -156,8 +155,10 @@ func Test_AddCommand(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			c := AddCommand{
 				cmd: &instructions.AddCommand{
-					SourcesAndDest: instructions.SourcesAndDest{SourcePaths: testCase.sourcesAndDest[0 : len(testCase.sourcesAndDest)-1],
-						DestPath: testCase.sourcesAndDest[len(testCase.sourcesAndDest)-1]},
+					SourcesAndDest: instructions.SourcesAndDest{
+						SourcePaths: testCase.sourcesAndDest[0 : len(testCase.sourcesAndDest)-1],
+						DestPath:    testCase.sourcesAndDest[len(testCase.sourcesAndDest)-1],
+					},
 				},
 				fileContext: fileContext,
 			}

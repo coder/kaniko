@@ -25,11 +25,12 @@ import (
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 )
 
 func readDirectory(dirName string) ([]fs.FileInfo, error) {
-	entries, err := os.ReadDir(dirName)
+	entries, err := filesystem.ReadDir(dirName)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +58,7 @@ ENV test test
 
 From scratch as second
 COPY --from=first copied/bam.txt output/bam.txt`
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -72,7 +73,6 @@ COPY --from=first copied/bam.txt output/bam.txt`
 		}
 		testutil.CheckDeepEqual(t, 1, len(files))
 		testutil.CheckDeepEqual(t, files[0].Name(), "bam.txt")
-
 	})
 
 	t.Run("copy a file across multistage into a directory", func(t *testing.T) {
@@ -85,7 +85,7 @@ ENV test test
 
 From scratch as second
 COPY --from=first copied/bam.txt output/`
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -111,7 +111,7 @@ ENV test test
 
 From scratch as second
 COPY --from=first copied another`
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -129,7 +129,7 @@ COPY --from=first copied another`
 		testutil.CheckDeepEqual(t, files[1].Name(), "bam.txt")
 		// TODO fix this
 		// path := filepath.Join(testDir, "output/another", "bam.link")
-		//linkName, err := os.Readlink(path)
+		//linkName, err := filesystem.FS.Readlink(path)
 		//if err != nil {
 		//	t.Fatal(err)
 		//}
@@ -146,7 +146,7 @@ ENV test test
 
 From scratch as second
 COPY --from=first / output/`
-		os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0755)
+		filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		opts := &config.KanikoOptions{
 			DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
 			SrcContext:     filepath.Join(testDir, "workspace"),
@@ -188,36 +188,36 @@ func setupMultistageTests(t *testing.T) (string, func()) {
 
 	// Make directory for stage or else the executor will create with permissions 0664
 	// and we will run into issue https://github.com/golang/go/issues/22323
-	if err := os.MkdirAll(filepath.Join(testDir, "kaniko/0"), 0755); err != nil {
+	if err := filesystem.FS.MkdirAll(filepath.Join(testDir, "kaniko/0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	workspace := filepath.Join(testDir, "workspace")
 	// Make foo
-	if err := os.MkdirAll(filepath.Join(workspace, "foo"), 0755); err != nil {
+	if err := filesystem.FS.MkdirAll(filepath.Join(workspace, "foo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	file := filepath.Join(workspace, "foo", "bam.txt")
-	if err := os.WriteFile(file, []byte("meow"), 0755); err != nil {
+	if err := filesystem.WriteFile(file, []byte("meow"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.Symlink("bam.txt", filepath.Join(workspace, "foo", "bam.link"))
+	filesystem.FS.Symlink("bam.txt", filepath.Join(workspace, "foo", "bam.link"))
 
 	// Make a file with contents link
 	file = filepath.Join(workspace, "exec")
-	if err := os.WriteFile(file, []byte("woof"), 0755); err != nil {
+	if err := filesystem.WriteFile(file, []byte("woof"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// Make bin
-	if err := os.MkdirAll(filepath.Join(workspace, "bin"), 0755); err != nil {
+	if err := filesystem.FS.MkdirAll(filepath.Join(workspace, "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.Symlink("../exec", filepath.Join(workspace, "bin", "exec.link"))
+	filesystem.FS.Symlink("../exec", filepath.Join(workspace, "bin", "exec.link"))
 
 	// set up config
 	config.RootDir = testDir
 	config.KanikoDir = fmt.Sprintf("%s/%s", testDir, "kaniko")
 	// Write path to ignore list
-	if err := os.MkdirAll(filepath.Join(testDir, "proc"), 0755); err != nil {
+	if err := filesystem.FS.MkdirAll(filepath.Join(testDir, "proc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	mFile := filepath.Join(testDir, "proc/mountinfo")
@@ -225,7 +225,7 @@ func setupMultistageTests(t *testing.T) (string, func()) {
 		`36 35 98:0 /kaniko %s/kaniko rw,noatime master:1 - ext3 /dev/root rw,errors=continue
 36 35 98:0 /proc %s/proc rw,noatime master:1 - ext3 /dev/root rw,errors=continue
 `, testDir, testDir)
-	if err := os.WriteFile(mFile, []byte(mountInfo), 0644); err != nil {
+	if err := filesystem.WriteFile(mFile, []byte(mountInfo), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	config.MountInfoPath = mFile

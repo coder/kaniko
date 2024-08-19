@@ -26,6 +26,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 )
@@ -37,7 +38,7 @@ func TestBuildWithStdin(t *testing.T) {
 	testDir := "test_dir"
 	testDirLongPath := filepath.Join(cwd, testDir)
 
-	if err := os.MkdirAll(testDirLongPath, 0750); err != nil {
+	if err := filesystem.FS.MkdirAll(testDirLongPath, 0o750); err != nil {
 		t.Errorf("Failed to create dir_where_to_extract: %v", err)
 	}
 
@@ -62,7 +63,7 @@ func TestBuildWithStdin(t *testing.T) {
 	// Create Tar Gz File with dockerfile inside
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		tarFile, err := os.Create(tarPath)
+		tarFile, err := filesystem.FS.Create(tarPath)
 		if err != nil {
 			t.Errorf("Failed to create %s: %v", tarPath, err)
 		}
@@ -86,10 +87,12 @@ func TestBuildWithStdin(t *testing.T) {
 
 	dockerImage := GetDockerImage(config.imageRepo, dockerfile)
 	dockerCmd := exec.Command("docker",
-		append([]string{"build",
+		append([]string{
+			"build",
 			"-t", dockerImage,
 			"-f", dockerfile,
-			"."})...)
+			".",
+		})...)
 
 	_, err := RunCommandWithoutTest(dockerCmd)
 	if err != nil {
@@ -145,7 +148,7 @@ func TestBuildWithStdin(t *testing.T) {
 	expected := fmt.Sprintf(emptyContainerDiff, dockerImage, kanikoImageStdin, dockerImage, kanikoImageStdin)
 	checkContainerDiffOutput(t, diff, expected)
 
-	if err := os.RemoveAll(testDirLongPath); err != nil {
+	if err := filesystem.FS.RemoveAll(testDirLongPath); err != nil {
 		t.Errorf("Failed to remove %s: %v", testDirLongPath, err)
 	}
 }

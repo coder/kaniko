@@ -26,6 +26,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 )
@@ -38,7 +39,7 @@ func TestBuildWithLocalTar(t *testing.T) {
 	testDirLongPath := filepath.Join(cwd, testDir)
 	dirUnpack := filepath.Join(testDirLongPath, "dir_where_to_unpack")
 
-	if err := os.MkdirAll(dirUnpack, 0750); err != nil {
+	if err := filesystem.FS.MkdirAll(dirUnpack, 0o750); err != nil {
 		t.Errorf("Failed to create dir_where_to_extract: %v", err)
 	}
 
@@ -68,13 +69,13 @@ func TestBuildWithLocalTar(t *testing.T) {
 	// Create Tar Gz File with dockerfile inside
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		validTarFile, err := os.Create(validTarPath)
+		validTarFile, err := filesystem.FS.Create(validTarPath)
 		if err != nil {
 			t.Errorf("Failed to create %s: %v", validTarPath, err)
 		}
 		defer validTarFile.Close()
 
-		invalidTarFile, err := os.Create(invalidTarPath)
+		invalidTarFile, err := filesystem.FS.Create(invalidTarPath)
 		if err != nil {
 			t.Errorf("Failed to create %s: %v", invalidTarPath, err)
 		}
@@ -138,13 +139,13 @@ func TestBuildWithLocalTar(t *testing.T) {
 		})
 	}
 
-	if err := os.RemoveAll(testDirLongPath); err != nil {
+	if err := filesystem.FS.RemoveAll(testDirLongPath); err != nil {
 		t.Errorf("Failed to remove %s: %v", testDirLongPath, err)
 	}
 }
 
 func getSHAFromFilePath(f string) (string, error) {
-	data, err := os.ReadFile(f)
+	data, err := filesystem.ReadFile(f)
 	if err != nil {
 		return "", err
 	}

@@ -32,6 +32,7 @@ import (
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/mocks/go-containerregistry/mockv1"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 	"github.com/golang/mock/gomock"
@@ -49,10 +50,10 @@ func Test_DetectFilesystemSkiplist(t *testing.T) {
 	232 228 0:101 / /sys ro,nosuid,nodev,noexec,relatime - sysfs sysfs ro`
 
 	path := filepath.Join(testDir, "mountinfo")
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	if err := filesystem.FS.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatalf("Error creating tempdir: %s", err)
 	}
-	if err := os.WriteFile(path, []byte(fileContents), 0o644); err != nil {
+	if err := filesystem.WriteFile(path, []byte(fileContents), 0o644); err != nil {
 		t.Fatalf("Error writing file contents to %s: %s", path, err)
 	}
 
@@ -483,7 +484,7 @@ type checker func(root string, t *testing.T)
 
 func fileExists(p string) checker {
 	return func(root string, t *testing.T) {
-		_, err := os.Stat(filepath.Join(root, p))
+		_, err := filesystem.FS.Stat(filepath.Join(root, p))
 		if err != nil {
 			t.Fatalf("File %s does not exist", filepath.Join(root, p))
 		}
@@ -492,7 +493,7 @@ func fileExists(p string) checker {
 
 func fileMatches(p string, c []byte) checker {
 	return func(root string, t *testing.T) {
-		actual, err := os.ReadFile(filepath.Join(root, p))
+		actual, err := filesystem.ReadFile(filepath.Join(root, p))
 		if err != nil {
 			t.Fatalf("error reading file: %s", p)
 		}
@@ -504,7 +505,7 @@ func fileMatches(p string, c []byte) checker {
 
 func timesMatch(p string, fTime time.Time) checker {
 	return func(root string, t *testing.T) {
-		fi, err := os.Stat(filepath.Join(root, p))
+		fi, err := filesystem.FS.Stat(filepath.Join(root, p))
 		if err != nil {
 			t.Fatalf("error statting file %s", p)
 		}
@@ -517,7 +518,7 @@ func timesMatch(p string, fTime time.Time) checker {
 
 func permissionsMatch(p string, perms os.FileMode) checker {
 	return func(root string, t *testing.T) {
-		fi, err := os.Stat(filepath.Join(root, p))
+		fi, err := filesystem.FS.Stat(filepath.Join(root, p))
 		if err != nil {
 			t.Fatalf("error statting file %s", p)
 		}
@@ -530,7 +531,7 @@ func permissionsMatch(p string, perms os.FileMode) checker {
 func linkPointsTo(src, dst string) checker {
 	return func(root string, t *testing.T) {
 		link := filepath.Join(root, src)
-		got, err := os.Readlink(link)
+		got, err := filesystem.FS.Readlink(link)
 		if err != nil {
 			t.Fatalf("error reading link %s: %s", link, err)
 		}
@@ -542,11 +543,11 @@ func linkPointsTo(src, dst string) checker {
 
 func filesAreHardlinks(first, second string) checker {
 	return func(root string, t *testing.T) {
-		fi1, err := os.Stat(filepath.Join(root, first))
+		fi1, err := filesystem.FS.Stat(filepath.Join(root, first))
 		if err != nil {
 			t.Fatalf("error getting file %s", first)
 		}
-		fi2, err := os.Stat(filepath.Join(root, second))
+		fi2, err := filesystem.FS.Stat(filepath.Join(root, second))
 		if err != nil {
 			t.Fatalf("error getting file %s", second)
 		}
@@ -604,7 +605,7 @@ func createUncompressedTar(fileContents map[string]string, tarFileName, testDir 
 	if err := testutil.SetupFiles(testDir, fileContents); err != nil {
 		return err
 	}
-	tarFile, err := os.Create(filepath.Join(testDir, tarFileName))
+	tarFile, err := filesystem.FS.Create(filepath.Join(testDir, tarFileName))
 	if err != nil {
 		return err
 	}
@@ -656,7 +657,7 @@ func Test_UnTar(t *testing.T) {
 			if err := createUncompressedTar(tc.setupTarContents, tc.tarFileName, testDir); err != nil {
 				t.Fatal(err)
 			}
-			file, err := os.Open(filepath.Join(testDir, tc.tarFileName))
+			file, err := filesystem.FS.Open(filepath.Join(testDir, tc.tarFileName))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -806,7 +807,7 @@ func TestExtractFile(t *testing.T) {
 			} else {
 				r = t.TempDir()
 			}
-			defer os.RemoveAll(r)
+			defer filesystem.FS.RemoveAll(r)
 
 			for _, hdr := range tc.hdrs {
 				if err := ExtractFile(r, hdr, filepath.Clean(hdr.Name), bytes.NewReader(tc.contents)); err != nil {
@@ -839,7 +840,7 @@ func TestCopySymlink(t *testing.T) {
 		linkTarget: "/abs/dest",
 		dest:       "overwrite_me",
 		beforeLink: func(r string) error {
-			return os.WriteFile(filepath.Join(r, "overwrite_me"), nil, 0o644)
+			return filesystem.WriteFile(filepath.Join(r, "overwrite_me"), nil, 0o644)
 		},
 	}}
 
@@ -848,9 +849,9 @@ func TestCopySymlink(t *testing.T) {
 			tc := tc
 			t.Parallel()
 			r := t.TempDir()
-			os.MkdirAll(filepath.Join(r, filepath.Dir(tc.linkTarget)), 0o777)
+			filesystem.FS.MkdirAll(filepath.Join(r, filepath.Dir(tc.linkTarget)), 0o777)
 			tc.linkTarget = filepath.Join(r, tc.linkTarget)
-			os.WriteFile(tc.linkTarget, nil, 0o644)
+			filesystem.WriteFile(tc.linkTarget, nil, 0o644)
 
 			if tc.beforeLink != nil {
 				if err := tc.beforeLink(r); err != nil {
@@ -862,13 +863,13 @@ func TestCopySymlink(t *testing.T) {
 			if tc.dest != "" {
 				dest = filepath.Join(r, tc.dest)
 			}
-			if err := os.Symlink(tc.linkTarget, link); err != nil {
+			if err := filesystem.FS.Symlink(tc.linkTarget, link); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := CopySymlink(link, dest, FileContext{}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := os.Lstat(dest); err != nil {
+			if _, err := filesystem.FS.Lstat(dest); err != nil {
 				t.Fatalf("error reading link %s: %s", link, err)
 			}
 		})
@@ -979,7 +980,7 @@ func Test_CopyFile_skips_self(t *testing.T) {
 	tempFile := filepath.Join(tempDir, "foo")
 	expected := "bar"
 
-	if err := os.WriteFile(
+	if err := filesystem.WriteFile(
 		tempFile,
 		[]byte(expected),
 		0o755,
@@ -997,7 +998,7 @@ func Test_CopyFile_skips_self(t *testing.T) {
 	}
 
 	// Ensure file has expected contents
-	actualData, err := os.ReadFile(tempFile)
+	actualData, err := filesystem.ReadFile(tempFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1020,7 +1021,7 @@ func Test_GetFSFromLayers_with_whiteouts_include_whiteout_enabled(t *testing.T) 
 	root := t.TempDir()
 	// Write a whiteout path
 	d1 := []byte("Hello World\n")
-	if err := os.WriteFile(filepath.Join(root, "foobar"), d1, 0o644); err != nil {
+	if err := filesystem.WriteFile(filepath.Join(root, "foobar"), d1, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1106,7 +1107,7 @@ func Test_GetFSFromLayers_with_whiteouts_include_whiteout_enabled(t *testing.T) 
 		expectErr,
 	)
 	// Make sure whiteout files are removed form the root.
-	_, err = os.Lstat(filepath.Join(root, "foobar"))
+	_, err = filesystem.FS.Lstat(filepath.Join(root, "foobar"))
 	if err == nil || !os.IsNotExist(err) {
 		t.Errorf("expected whiteout foobar file to be deleted. However found it.")
 	}
@@ -1131,7 +1132,7 @@ func Test_GetFSFromLayers_with_whiteouts_include_whiteout_disabled(t *testing.T)
 	root := t.TempDir()
 	// Write a whiteout path
 	d1 := []byte("Hello World\n")
-	if err := os.WriteFile(filepath.Join(root, "foobar"), d1, 0o644); err != nil {
+	if err := filesystem.WriteFile(filepath.Join(root, "foobar"), d1, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1221,7 +1222,7 @@ func Test_GetFSFromLayers_with_whiteouts_include_whiteout_disabled(t *testing.T)
 		expectErr,
 	)
 	// Make sure whiteout files are removed form the root.
-	_, err = os.Lstat(filepath.Join(root, "foobar"))
+	_, err = filesystem.FS.Lstat(filepath.Join(root, "foobar"))
 	if err == nil || !os.IsNotExist(err) {
 		t.Errorf("expected whiteout foobar file to be deleted. However found it.")
 	}
@@ -1236,7 +1237,7 @@ func Test_GetFSFromLayers_ignorelist(t *testing.T) {
 	root := t.TempDir()
 	// Write a whiteout path
 	fileContents := []byte("Hello World\n")
-	if err := os.Mkdir(filepath.Join(root, "testdir"), 0o775); err != nil {
+	if err := filesystem.FS.Mkdir(filepath.Join(root, "testdir"), 0o775); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1313,7 +1314,7 @@ func Test_GetFSFromLayers_ignorelist(t *testing.T) {
 	)
 
 	// Make sure whiteout files are removed form the root.
-	_, err = os.Lstat(filepath.Join(root, "testdir"))
+	_, err = filesystem.FS.Lstat(filepath.Join(root, "testdir"))
 	if err == nil || !os.IsNotExist(err) {
 		t.Errorf("expected testdir to be deleted. However found it.")
 	}
@@ -1326,7 +1327,7 @@ func Test_GetFSFromLayers_ignorelist(t *testing.T) {
 	defaultIgnoreList = append(defaultIgnoreList, IgnoreListEntry{
 		Path: filepath.Join(root, "testdir"),
 	})
-	if err := os.Mkdir(filepath.Join(root, "testdir"), 0o775); err != nil {
+	if err := filesystem.FS.Mkdir(filepath.Join(root, "testdir"), 0o775); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1369,7 +1370,7 @@ func Test_GetFSFromLayers_ignorelist(t *testing.T) {
 	)
 
 	// Make sure testdir still exists.
-	_, err = os.Lstat(filepath.Join(root, "testdir"))
+	_, err = filesystem.FS.Lstat(filepath.Join(root, "testdir"))
 	if err != nil {
 		t.Errorf("expected testdir to exist, but could not Lstat it: %v", err)
 	}
@@ -1470,7 +1471,7 @@ func TestInitIgnoreList(t *testing.T) {
 	mountInfo := `36 35 98:0 /kaniko /test/kaniko rw,noatime master:1 - ext3 /dev/root rw,errors=continue
 36 35 98:0 /proc /test/proc rw,noatime master:1 - ext3 /dev/root rw,errors=continue
 `
-	mFile, err := os.CreateTemp("", "mountinfo")
+	mFile, err := filesystem.CreateTemp("", "mountinfo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1532,7 +1533,7 @@ func Test_setFileTimes(t *testing.T) {
 
 	p := filepath.Join(testDir, "foo.txt")
 
-	if err := os.WriteFile(p, []byte("meow"), 0o777); err != nil {
+	if err := filesystem.WriteFile(p, []byte("meow"), 0o777); err != nil {
 		t.Fatal(err)
 	}
 

@@ -18,11 +18,11 @@ package dockerfile
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
@@ -44,12 +44,12 @@ func Test_ParseStages_ArgValueWithQuotes(t *testing.T) {
 	FROM scratch
 	COPY --from=second /hi2 /hi3
 	`
-	tmpfile, err := os.CreateTemp("", "Dockerfile.test")
+	tmpfile, err := filesystem.CreateTemp("", "Dockerfile.test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer os.Remove(tmpfile.Name())
+	defer filesystem.FS.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write([]byte(dockerfile)); err != nil {
 		t.Fatal(err)
@@ -201,17 +201,20 @@ func Test_GetOnBuildInstructions(t *testing.T) {
 	}
 
 	tests := []testCase{
-		{name: "no on-build on config",
+		{
+			name:        "no on-build on config",
 			cfg:         &v1.Config{},
 			stageToIdx:  map[string]string{"builder": "0"},
 			expCommands: nil,
 		},
-		{name: "onBuild on config, nothing to resolve",
+		{
+			name:        "onBuild on config, nothing to resolve",
 			cfg:         &v1.Config{OnBuild: []string{"WORKDIR /app"}},
 			stageToIdx:  map[string]string{"builder": "0", "temp": "1"},
 			expCommands: []instructions.Command{&instructions.WorkdirCommand{Path: "/app"}},
 		},
-		{name: "onBuild on config, resolve multiple stages",
+		{
+			name:       "onBuild on config, resolve multiple stages",
 			cfg:        &v1.Config{OnBuild: []string{"COPY --from=builder a.txt b.txt", "COPY --from=temp /app /app"}},
 			stageToIdx: map[string]string{"builder": "0", "temp": "1"},
 			expCommands: []instructions.Command{
@@ -223,7 +226,8 @@ func Test_GetOnBuildInstructions(t *testing.T) {
 					SourcesAndDest: instructions.SourcesAndDest{SourcePaths: []string{"/app"}, DestPath: "/app"},
 					From:           "1",
 				},
-			}},
+			},
+		},
 	}
 
 	for _, test := range tests {

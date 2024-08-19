@@ -26,6 +26,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	kConfig "github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 )
 
@@ -36,7 +37,6 @@ type AzureBlob struct {
 
 // Download context file from given azure blob storage url and unpack it to BuildContextDir
 func (b *AzureBlob) UnpackTarFromBuildContext() (string, error) {
-
 	// Get Azure_STORAGE_ACCESS_KEY from environment variables
 	accountKey := os.Getenv("AZURE_STORAGE_ACCESS_KEY")
 	if len(accountKey) == 0 {
@@ -79,5 +79,5 @@ func (b *AzureBlob) UnpackTarFromBuildContext() (string, error) {
 		return tarPath, err
 	}
 	// Remove the tar so it doesn't interfere with subsequent commands
-	return directory, os.Remove(tarPath)
+	return directory, filesystem.FS.Remove(tarPath)
 }

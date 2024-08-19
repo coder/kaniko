@@ -20,9 +20,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/pkg/errors"
 )
@@ -57,7 +57,7 @@ func (s *CompositeCache) Hash() (string, error) {
 
 func (s *CompositeCache) AddPath(p string, context util.FileContext) error {
 	sha := sha256.New()
-	fi, err := os.Lstat(p)
+	fi, err := filesystem.FS.Lstat(p)
 	if err != nil {
 		return errors.Wrap(err, "could not add path")
 	}
@@ -95,7 +95,7 @@ func (s *CompositeCache) AddPath(p string, context util.FileContext) error {
 func hashDir(p string, context util.FileContext) (bool, string, error) {
 	sha := sha256.New()
 	empty := true
-	if err := filepath.Walk(p, func(path string, fi os.FileInfo, err error) error {
+	if err := filesystem.Walk(p, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

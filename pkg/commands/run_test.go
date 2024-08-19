@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 )
@@ -129,14 +130,14 @@ Meow meow meow meow
 meow meow meow meow
 `
 	for _, name := range fileNames {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0777); err != nil {
+		if err := filesystem.WriteFile(filepath.Join(dir, name), []byte(content), 0o777); err != nil {
 			return nil, err
 		}
 	}
 	writer := bytes.NewBuffer([]byte{})
 	tw := tar.NewWriter(writer)
 	defer tw.Close()
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	filesystem.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -152,7 +153,7 @@ meow meow meow meow
 		if err := tw.WriteHeader(hdr); err != nil {
 			log.Fatal(err)
 		}
-		body, err := os.ReadFile(path)
+		body, err := filesystem.ReadFile(path)
 		if err != nil {
 			return err
 		}

@@ -23,6 +23,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 )
 
@@ -34,13 +35,13 @@ func CreateIntegrationTarball() (string, error) {
 	if err != nil {
 		return "nil", fmt.Errorf("Failed find path to integration dir: %w", err)
 	}
-	tempDir, err := os.MkdirTemp("", "")
+	tempDir, err := filesystem.MkdirTemp("", "")
 	if err != nil {
 		return "", fmt.Errorf("Failed to create temporary directory to hold tarball: %w", err)
 	}
 	contextFilePath := fmt.Sprintf("%s/context_%d.tar.gz", tempDir, time.Now().UnixNano())
 
-	file, err := os.OpenFile(contextFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := filesystem.FS.OpenFile(contextFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return "", err
 	}

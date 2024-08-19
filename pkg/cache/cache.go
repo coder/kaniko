@@ -18,7 +18,6 @@ package cache
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/creds"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -178,7 +178,7 @@ func LocalSource(opts *config.CacheOptions, cacheKey string) (v1.Image, error) {
 
 	path := path.Join(cache, cacheKey)
 
-	fi, err := os.Stat(path)
+	fi, err := filesystem.FS.Stat(path)
 	if err != nil {
 		msg := fmt.Sprintf("No file found for cache key %v %v", cacheKey, err)
 		logrus.Debug(msg)
@@ -219,7 +219,7 @@ func (c *cachedImage) Manifest() (*v1.Manifest, error) {
 }
 
 func mfstFromPath(p string) (*v1.Manifest, error) {
-	f, err := os.Open(p)
+	f, err := filesystem.FS.Open(p)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func cachedImageFromPath(p string) (v1.Image, error) {
 	mfstPath := p + ".json"
 
 	var mfst *v1.Manifest
-	if _, err := os.Stat(mfstPath); err != nil {
+	if _, err := filesystem.FS.Stat(mfstPath); err != nil {
 		logrus.Debugf("Manifest does not exist at file: %s", mfstPath)
 	} else {
 		mfst, err = mfstFromPath(mfstPath)

@@ -18,7 +18,6 @@ package executor
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -42,6 +41,7 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
 	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	image_util "github.com/GoogleContainerTools/kaniko/pkg/image"
 	"github.com/GoogleContainerTools/kaniko/pkg/image/remote"
 	"github.com/GoogleContainerTools/kaniko/pkg/snapshot"
@@ -59,12 +59,14 @@ var (
 	getFSFromImage   = util.GetFSFromImage
 )
 
-type cachePusher func(*config.KanikoOptions, string, string, string) error
-type snapShotter interface {
-	Init() error
-	TakeSnapshotFS() (string, error)
-	TakeSnapshot([]string, bool, bool) (string, error)
-}
+type (
+	cachePusher func(*config.KanikoOptions, string, string, string) error
+	snapShotter interface {
+		Init() error
+		TakeSnapshotFS() (string, error)
+		TakeSnapshot([]string, bool, bool) (string, error)
+	}
+)
 
 // stageBuilder contains all fields necessary to build one stage of a Dockerfile
 type stageBuilder struct {
@@ -239,7 +241,7 @@ func (s *stageBuilder) optimize(compositeKey CompositeCache, cfg v1.Config) erro
 	if !s.opts.Cache {
 		return nil
 	}
-	var buildArgs = s.args.Clone()
+	buildArgs := s.args.Clone()
 	// Restore build args back to their original values
 	defer func() {
 		s.args = buildArgs
@@ -275,7 +277,6 @@ func (s *stageBuilder) optimize(compositeKey CompositeCache, cfg v1.Config) erro
 
 		if command.ShouldCacheOutput() && !stopCache {
 			img, err := s.layerCache.RetrieveLayer(ck)
-
 			if err != nil {
 				logrus.Debugf("Failed to retrieve layer: %s", err)
 				logrus.Infof("No cached layer found for cmd %s", command.String())
@@ -593,7 +594,7 @@ func (s *stageBuilder) saveSnapshotToLayer(tarPath string) (v1.Layer, error) {
 	if tarPath == "" {
 		return nil, nil
 	}
-	fi, err := os.Stat(tarPath)
+	fi, err := filesystem.FS.Stat(tarPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "tar file path does not exist")
 	}
@@ -913,7 +914,7 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 			return nil, err
 		}
 		dstDir := filepath.Join(config.KanikoDir, strconv.Itoa(index))
-		if err := os.MkdirAll(dstDir, 0644); err != nil {
+		if err := filesystem.FS.MkdirAll(dstDir, 0o644); err != nil {
 			return nil, errors.Wrap(err,
 				fmt.Sprintf("to create workspace for stage %s",
 					stageIdxToDigest[strconv.Itoa(index)],
@@ -1201,7 +1202,7 @@ func extractImageToDependencyDir(name string, image v1.Image) error {
 	t := timing.Start("Extracting Image to Dependency Dir")
 	defer timing.DefaultRun.Stop(t)
 	dependencyDir := filepath.Join(config.KanikoDir, name)
-	if err := os.MkdirAll(dependencyDir, 0755); err != nil {
+	if err := filesystem.FS.MkdirAll(dependencyDir, 0o755); err != nil {
 		return err
 	}
 	logrus.Debugf("Trying to extract to %s", dependencyDir)
@@ -1218,7 +1219,7 @@ func saveStageAsTarball(path string, image v1.Image) error {
 	}
 	tarPath := filepath.Join(config.KanikoIntermediateStagesDir, path)
 	logrus.Infof("Storing source image from stage %s at path %s", path, tarPath)
-	if err := os.MkdirAll(filepath.Dir(tarPath), 0750); err != nil {
+	if err := filesystem.FS.MkdirAll(filepath.Dir(tarPath), 0o750); err != nil {
 		return err
 	}
 	return tarball.WriteToFile(tarPath, destRef, image)

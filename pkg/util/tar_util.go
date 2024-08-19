@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/system"
 	"github.com/pkg/errors"
@@ -80,7 +81,7 @@ func CreateTarballOfDirectory(pathToDir string, f io.Writer) error {
 		return tarWriter.AddFileToTar(path)
 	}
 
-	return filepath.WalkDir(pathToDir, walkFn)
+	return filesystem.WalkDir(pathToDir, walkFn)
 }
 
 // Close will close any open streams used by Tar.
@@ -90,14 +91,14 @@ func (t *Tar) Close() {
 
 // AddFileToTar adds the file at path p to the tar
 func (t *Tar) AddFileToTar(p string) error {
-	i, err := os.Lstat(p)
+	i, err := filesystem.FS.Lstat(p)
 	if err != nil {
 		return fmt.Errorf("Failed to get file info for %s: %w", p, err)
 	}
 	linkDst := ""
 	if i.Mode()&os.ModeSymlink != 0 {
 		var err error
-		linkDst, err = os.Readlink(p)
+		linkDst, err = filesystem.FS.Readlink(p)
 		if err != nil {
 			return err
 		}
@@ -155,7 +156,7 @@ func (t *Tar) AddFileToTar(p string) error {
 	if !(i.Mode().IsRegular()) || hardlink {
 		return nil
 	}
-	r, err := os.Open(p)
+	r, err := filesystem.FS.Open(p)
 	if err != nil {
 		return err
 	}
@@ -252,7 +253,7 @@ func getSyscallStatT(i os.FileInfo) *syscall.Stat_t {
 func UnpackLocalTarArchive(path, dest string) ([]string, error) {
 	// First, we need to check if the path is a local tar archive
 	if compressed, compressionLevel := fileIsCompressedTar(path); compressed {
-		file, err := os.Open(path)
+		file, err := filesystem.FS.Open(path)
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +271,7 @@ func UnpackLocalTarArchive(path, dest string) ([]string, error) {
 		}
 	}
 	if fileIsUncompressedTar(path) {
-		file, err := os.Open(path)
+		file, err := filesystem.FS.Open(path)
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +289,7 @@ func IsFileLocalTarArchive(src string) bool {
 }
 
 func fileIsCompressedTar(src string) (bool, archive.Compression) {
-	r, err := os.Open(src)
+	r, err := filesystem.FS.Open(src)
 	if err != nil {
 		return false, -1
 	}
@@ -302,12 +303,12 @@ func fileIsCompressedTar(src string) (bool, archive.Compression) {
 }
 
 func fileIsUncompressedTar(src string) bool {
-	r, err := os.Open(src)
+	r, err := filesystem.FS.Open(src)
 	if err != nil {
 		return false
 	}
 	defer r.Close()
-	fi, err := os.Lstat(src)
+	fi, err := filesystem.FS.Lstat(src)
 	if err != nil {
 		return false
 	}
@@ -324,7 +325,7 @@ func fileIsUncompressedTar(src string) bool {
 
 // UnpackCompressedTar unpacks the compressed tar at path to dir
 func UnpackCompressedTar(path, dir string) error {
-	file, err := os.Open(path)
+	file, err := filesystem.FS.Open(path)
 	if err != nil {
 		return err
 	}
