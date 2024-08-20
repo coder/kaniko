@@ -1176,16 +1176,10 @@ func createParentDirectory(path string, uid int, gid int) error {
 			dir := dirs[i]
 
 			if _, err := filesystem.FS.Lstat(dir); os.IsNotExist(err) {
-				err = filesystem.FS.Mkdir(dir, 0o755)
-				if err != nil {
-					return err
-				}
+				filesystem.FS.Mkdir(dir, 0o755)
 				if uid != DoNotChangeUID {
 					if gid != DoNotChangeGID {
-						err = filesystem.FS.Chown(dir, uid, gid)
-						if err != nil {
-							return err
-						}
+						filesystem.FS.Chown(dir, uid, gid)
 					} else {
 						return errors.New(fmt.Sprintf("UID=%d but GID=-1, i.e. it is not set for %s", uid, dir))
 					}
