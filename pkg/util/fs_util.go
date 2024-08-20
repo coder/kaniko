@@ -1215,7 +1215,6 @@ func InitIgnoreList() error {
 type walkFSResult struct {
 	filesAdded    []string
 	existingPaths map[string]struct{}
-	err           error
 }
 
 // WalkFS given a directory dir and list of existing files existingPaths,
@@ -1285,8 +1284,9 @@ func gowalkDir(dir string, existingPaths map[string]struct{}, changeFunc func(st
 		return nil
 	}
 
-	err := filesystem.WalkDir(dir, callback)
-	return walkFSResult{foundPaths, deletedFiles, err}
+	filesystem.WalkDir(dir, callback)
+
+	return walkFSResult{foundPaths, deletedFiles}
 }
 
 // GetFSInfoMap given a directory gets a map of FileInfo for all files
