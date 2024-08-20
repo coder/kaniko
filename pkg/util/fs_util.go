@@ -36,7 +36,6 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
 	"github.com/docker/docker/pkg/archive"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/karrick/godirwalk"
 	"github.com/moby/buildkit/frontend/dockerfile/dockerignore"
 	"github.com/moby/patternmatcher"
 	otiai10Cpy "github.com/otiai10/copy"
@@ -1216,6 +1215,7 @@ func InitIgnoreList() error {
 type walkFSResult struct {
 	filesAdded    []string
 	existingPaths map[string]struct{}
+	err           error
 }
 
 // WalkFS given a directory dir and list of existing files existingPaths,
@@ -1262,7 +1262,7 @@ func gowalkDir(dir string, existingPaths map[string]struct{}, changeFunc func(st
 	foundPaths := make([]string, 0)
 	deletedFiles := existingPaths // Make a reference.
 
-	callback := func(path string, ent *godirwalk.Dirent) error {
+	callback := func(path string, ent fs.DirEntry, err error) error {
 		logrus.Tracef("Analyzing path '%s'", path)
 
 		if IsInIgnoreList(path) {
@@ -1285,13 +1285,8 @@ func gowalkDir(dir string, existingPaths map[string]struct{}, changeFunc func(st
 		return nil
 	}
 
-	godirwalk.Walk(dir,
-		&godirwalk.Options{
-			Callback: callback,
-			Unsorted: true,
-		})
-
-	return walkFSResult{foundPaths, deletedFiles}
+	err := filesystem.WalkDir(dir, callback)
+	return walkFSResult{foundPaths, deletedFiles, err}
 }
 
 // GetFSInfoMap given a directory gets a map of FileInfo for all files
@@ -1299,33 +1294,29 @@ func GetFSInfoMap(dir string, existing map[string]os.FileInfo) (map[string]os.Fi
 	fileMap := map[string]os.FileInfo{}
 	foundPaths := []string{}
 	timer := timing.Start("Walking filesystem with Stat")
-	godirwalk.Walk(dir, &godirwalk.Options{
-		Callback: func(path string, ent *godirwalk.Dirent) error {
-			if CheckCleanedPathAgainstIgnoreList(path) {
-				if IsDestDir(path) {
-					logrus.Tracef("Skipping paths under %s, as it is a ignored directory", path)
-					return filepath.SkipDir
-				}
-				return nil
+	filesystem.WalkDir(dir, func(path string, ent fs.DirEntry, err error) error {
+		if CheckCleanedPathAgainstIgnoreList(path) {
+			if IsDestDir(path) {
+				logrus.Tracef("Skipping paths under %s, as it is a ignored directory", path)
+				return filepath.SkipDir
 			}
-			if fi, err := filesystem.FS.Lstat(path); err == nil {
-				if fiPrevious, ok := existing[path]; ok {
-					// check if file changed
-					if !isSame(fiPrevious, fi) {
-						fileMap[path] = fi
-						foundPaths = append(foundPaths, path)
-					}
-				} else {
-					// new path
+			return nil
+		}
+		if fi, err := filesystem.FS.Lstat(path); err == nil {
+			if fiPrevious, ok := existing[path]; ok {
+				// check if file changed
+				if !isSame(fiPrevious, fi) {
 					fileMap[path] = fi
 					foundPaths = append(foundPaths, path)
 				}
+			} else {
+				// new path
+				fileMap[path] = fi
+				foundPaths = append(foundPaths, path)
 			}
-			return nil
-		},
-		Unsorted: true,
-	},
-	)
+		}
+		return nil
+	})
 	timing.DefaultRun.Stop(timer)
 	return fileMap, foundPaths
 }
