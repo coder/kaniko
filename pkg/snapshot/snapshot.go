@@ -19,7 +19,6 @@ package snapshot
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -179,11 +178,11 @@ func (s *Snapshotter) scanFullFilesystem() ([]string, []string, error) {
 			return nil, nil, err
 		}
 		defer dir.Close()
-		d, ok := dir.(*os.File)
+		dirfd, ok := dir.(interface{ Fd() uintptr })
 		if !ok {
-			return nil, nil, errors.New("unable to convert directory to file")
+			return nil, nil, errors.New("filesystem open did not return a directory with a file descriptor")
 		}
-		_, _, errno := syscall.Syscall(unix.SYS_SYNCFS, d.Fd(), 0, 0)
+		_, _, errno := syscall.Syscall(unix.SYS_SYNCFS, dirfd.Fd(), 0, 0)
 		if errno != 0 {
 			return nil, nil, errno
 		}
