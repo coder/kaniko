@@ -31,9 +31,6 @@ go_test(
         "//pkg/timing",
         "//pkg/util",
         "//testutil",
-        "//vendor/github.com/google/go-containerregistry/pkg/name",
-        "//vendor/github.com/google/go-containerregistry/pkg/v1/daemon",
-        "//vendor/github.com/pkg/errors",
     ],
 )
 

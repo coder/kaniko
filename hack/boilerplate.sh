@@ -15,7 +15,7 @@
 set -e
 
 # Ignore these paths in the following tests.
-ignore="vendor\|out"
+ignore="out"
 BOILERPLATEDIR=./hack/boilerplate
 files=$(python3 ${BOILERPLATEDIR}/boilerplate.py --rootdir . --boilerplate-dir ${BOILERPLATEDIR})
 
