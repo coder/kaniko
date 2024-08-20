@@ -97,7 +97,7 @@ func setupTestTemp(t *testing.T) string {
 					return err
 				}
 				if fileInfo.IsDir() {
-					filesystem.FS.MkdirAll(tempDir+"/"+tempPath, 0o777)
+					filesystem.MkdirAll(tempDir+"/"+tempPath, 0o777)
 				} else {
 					out, err := filesystem.FS.Create(tempDir + "/" + tempPath)
 					if err != nil {
@@ -436,7 +436,7 @@ func Test_CopyEnvAndWildcards(t *testing.T) {
 
 		dir := filepath.Join(testDir, "bar")
 
-		if err := filesystem.FS.MkdirAll(dir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(dir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 		file := filepath.Join(dir, "bam.txt")
@@ -500,7 +500,7 @@ func TestCopyCommand_ExecuteCommand_Extended(t *testing.T) {
 
 		dir := filepath.Join(testDir, "bar")
 
-		if err := filesystem.FS.MkdirAll(dir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(dir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 		file := filepath.Join(dir, "bam.txt")
@@ -666,7 +666,7 @@ func TestCopyCommand_ExecuteCommand_Extended(t *testing.T) {
 		defer filesystem.FS.RemoveAll(testDir)
 
 		destDir := filepath.Join(testDir, "dest")
-		if err := filesystem.FS.MkdirAll(destDir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(destDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
@@ -819,7 +819,7 @@ func TestCopyCommand_ExecuteCommand_Extended(t *testing.T) {
 		}
 
 		anotherSrc := filepath.Join(testDir, "anotherSrc")
-		if err := filesystem.FS.MkdirAll(anotherSrc, 0o777); err != nil {
+		if err := filesystem.MkdirAll(anotherSrc, 0o777); err != nil {
 			t.Fatal(err)
 		}
 		targetPath := filepath.Join(anotherSrc, "target.txt")
@@ -909,7 +909,7 @@ func TestCopyCommand_ExecuteCommand_Extended(t *testing.T) {
 		}
 
 		dest := filepath.Join(testDir, "dest")
-		if err := filesystem.FS.MkdirAll(dest, 0o777); err != nil {
+		if err := filesystem.MkdirAll(dest, 0o777); err != nil {
 			t.Fatal(err)
 		}
 		linkedDest := filepath.Join(testDir, "linkDest")
@@ -954,7 +954,7 @@ func TestCopyCommand_ExecuteCommand_Extended(t *testing.T) {
 		defer filesystem.FS.RemoveAll(testDir)
 
 		dest := filepath.Join(testDir, "dest")
-		if err := filesystem.FS.MkdirAll(dest, 0o777); err != nil {
+		if err := filesystem.MkdirAll(dest, 0o777); err != nil {
 			t.Fatal(err)
 		}
 		linkedDest := filepath.Join(testDir, "linkDest")
@@ -1081,7 +1081,7 @@ func TestCopyCommand_ExecuteCommand_Extended(t *testing.T) {
 
 		// Make another dir inside bar with a relative symlink
 		dir := filepath.Join(testDir, srcDir, "another")
-		if err := filesystem.FS.MkdirAll(dir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(dir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 		filesystem.FS.Symlink("../bam.txt", filepath.Join(dir, "bam_relative.txt"))

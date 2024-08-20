@@ -31,7 +31,7 @@ import (
 func SetupFiles(path string, files map[string]string) error {
 	for p, c := range files {
 		path := filepath.Join(path, p)
-		if err := filesystem.FS.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		if err := filesystem.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			return err
 		}
 		if err := filesystem.WriteFile(path, []byte(c), 0o644); err != nil {
@@ -96,6 +96,7 @@ func CheckError(t *testing.T, shouldErr bool, err error) {
 }
 
 func CheckNoError(t *testing.T, err error) {
+	t.Helper()
 	if err != nil {
 		t.Errorf("%+v", err)
 	}

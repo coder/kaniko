@@ -421,7 +421,7 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 		if os.IsNotExist(err) || !fi.IsDir() {
 			logrus.Debugf("Base %s for file %s does not exist. Creating.", base, path)
 
-			if err := filesystem.FS.MkdirAll(dir, 0o755); err != nil {
+			if err := filesystem.MkdirAll(dir, 0o755); err != nil {
 				return err
 			}
 		}
@@ -473,7 +473,7 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 			return nil
 		}
 		// The base directory for a link may not exist before it is created.
-		if err := filesystem.FS.MkdirAll(dir, 0o755); err != nil {
+		if err := filesystem.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 		// Check if something already exists at path
@@ -491,7 +491,7 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 	case tar.TypeSymlink:
 		logrus.Tracef("Symlink from %s to %s", hdr.Linkname, path)
 		// The base directory for a symlink may not exist before it is created.
-		if err := filesystem.FS.MkdirAll(dir, 0o755); err != nil {
+		if err := filesystem.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 		// Check if something already exists at path
@@ -972,7 +972,7 @@ func MkdirAllWithPermissions(path string, mode os.FileMode, uid, gid int64) erro
 		return errors.Wrapf(err, "error calling stat on %s.", path)
 	}
 
-	if err := filesystem.FS.MkdirAll(path, mode); err != nil {
+	if err := filesystem.MkdirAll(path, mode); err != nil {
 		return err
 	}
 	if uid > math.MaxUint32 || gid > math.MaxUint32 {
@@ -1035,7 +1035,7 @@ func CreateTargetTarfile(tarpath string) (*os.File, error) {
 	baseDir := filepath.Dir(tarpath)
 	if _, err := filesystem.FS.Lstat(baseDir); os.IsNotExist(err) {
 		logrus.Debugf("BaseDir %s for file %s does not exist. Creating.", baseDir, tarpath)
-		if err := filesystem.FS.MkdirAll(baseDir, 0o755); err != nil {
+		if err := filesystem.MkdirAll(baseDir, 0o755); err != nil {
 			return nil, err
 		}
 	}
@@ -1043,10 +1043,7 @@ func CreateTargetTarfile(tarpath string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	if osf, ok := f.(*os.File); ok {
-		return osf, nil
-	}
-	return nil, errors.New("CreateTargetTarfile failed: file is not a *os.File")
+	return f, nil
 }
 
 // Returns true if a file is a symlink

@@ -37,6 +37,7 @@ require (
 require (
 	github.com/GoogleCloudPlatform/docker-credential-gcr/v2 v2.1.22
 	github.com/containerd/containerd v1.7.19
+	github.com/twpayne/go-vfs/v5 v5.0.4
 )
 
 require github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect

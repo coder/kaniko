@@ -188,12 +188,12 @@ func setupMultistageTests(t *testing.T) (string, func()) {
 
 	// Make directory for stage or else the executor will create with permissions 0664
 	// and we will run into issue https://github.com/golang/go/issues/22323
-	if err := filesystem.FS.MkdirAll(filepath.Join(testDir, "kaniko/0"), 0o755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(testDir, "kaniko/0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	workspace := filepath.Join(testDir, "workspace")
 	// Make foo
-	if err := filesystem.FS.MkdirAll(filepath.Join(workspace, "foo"), 0o755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(workspace, "foo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	file := filepath.Join(workspace, "foo", "bam.txt")
@@ -208,7 +208,7 @@ func setupMultistageTests(t *testing.T) (string, func()) {
 		t.Fatal(err)
 	}
 	// Make bin
-	if err := filesystem.FS.MkdirAll(filepath.Join(workspace, "bin"), 0o755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(workspace, "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	filesystem.FS.Symlink("../exec", filepath.Join(workspace, "bin", "exec.link"))
@@ -217,7 +217,7 @@ func setupMultistageTests(t *testing.T) (string, func()) {
 	config.RootDir = testDir
 	config.KanikoDir = fmt.Sprintf("%s/%s", testDir, "kaniko")
 	// Write path to ignore list
-	if err := filesystem.FS.MkdirAll(filepath.Join(testDir, "proc"), 0o755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(testDir, "proc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	mFile := filepath.Join(testDir, "proc/mountinfo")

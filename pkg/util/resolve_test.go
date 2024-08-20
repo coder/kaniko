@@ -61,7 +61,7 @@ func Test_ResolvePaths(t *testing.T) {
 				fLink := filepath.Join(dir, "link", f)
 				fTarget := filepath.Join(dir, "target", f)
 
-				if err := filesystem.FS.MkdirAll(filepath.Dir(fTarget), 0o777); err != nil {
+				if err := filesystem.MkdirAll(filepath.Dir(fTarget), 0o777); err != nil {
 					t.Fatal(err)
 				}
 
@@ -69,7 +69,7 @@ func Test_ResolvePaths(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				if err := filesystem.FS.MkdirAll(filepath.Dir(fLink), 0o777); err != nil {
+				if err := filesystem.MkdirAll(filepath.Dir(fLink), 0o777); err != nil {
 					t.Fatal(err)
 				}
 
@@ -137,7 +137,7 @@ func Test_ResolvePaths(t *testing.T) {
 				link := filepath.Join(dir, "link", "zoom/")
 
 				target := filepath.Join(dir, "target", "zaam/")
-				if err := filesystem.FS.MkdirAll(target, 0o777); err != nil {
+				if err := filesystem.MkdirAll(target, 0o777); err != nil {
 					t.Fatal(err)
 				}
 
@@ -184,7 +184,7 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 		targetDir := filepath.Join(testDir, "bar", "baz")
 
-		if err := filesystem.FS.MkdirAll(targetDir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(targetDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
@@ -203,7 +203,7 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 		linkDir := filepath.Join(testDir, "foo", "buzz")
 
-		if err := filesystem.FS.MkdirAll(linkDir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
@@ -230,7 +230,7 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 		defer filesystem.FS.RemoveAll(testDir)
 
 		linkDir := filepath.Join(testDir, "var", "www")
-		if err := filesystem.FS.MkdirAll(linkDir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
@@ -252,7 +252,7 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 		linkDir := filepath.Join(testDir, "foo", "buzz")
 
-		if err := filesystem.FS.MkdirAll(linkDir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
@@ -302,7 +302,7 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 		linkDir := filepath.Join(testDir, "foo")
 
-		if err := filesystem.FS.MkdirAll(linkDir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
@@ -334,7 +334,7 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 		linkDir := filepath.Join(testDir, "foo")
 
-		if err := filesystem.FS.MkdirAll(linkDir, 0o777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 

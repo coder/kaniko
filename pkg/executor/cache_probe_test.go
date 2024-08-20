@@ -250,12 +250,12 @@ func setupCacheProbeTests(t *testing.T) (string, func()) {
 	//     - /foo
 	//          - bar.txt
 	//          - baz.txt
-	if err := filesystem.FS.MkdirAll(filepath.Join(testDir, "kaniko/0"), 0o755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(testDir, "kaniko/0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	workspace := filepath.Join(testDir, "workspace")
 	// Make foo
-	if err := filesystem.FS.MkdirAll(filepath.Join(workspace, "foo"), 0o755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(workspace, "foo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	file := filepath.Join(workspace, "foo", "bar.txt")
@@ -271,7 +271,7 @@ func setupCacheProbeTests(t *testing.T) (string, func()) {
 	config.RootDir = testDir
 	config.KanikoDir = fmt.Sprintf("%s/%s", testDir, "kaniko")
 	// Write path to ignore list
-	if err := filesystem.FS.MkdirAll(filepath.Join(testDir, "proc"), 0o755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(testDir, "proc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	mFile := filepath.Join(testDir, "proc/mountinfo")

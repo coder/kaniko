@@ -139,7 +139,7 @@ func Test_CompositeCache_AddPath_file(t *testing.T) {
 func createFilesystemStructure(root string, directories, files []string) error {
 	for _, d := range directories {
 		dirPath := path.Join(root, d)
-		if err := filesystem.FS.MkdirAll(dirPath, 0o755); err != nil {
+		if err := filesystem.MkdirAll(dirPath, 0o755); err != nil {
 			return err
 		}
 	}
@@ -358,7 +358,7 @@ func Test_CompositeKey_AddPath_WithExtraDir_Works(t *testing.T) {
 				t.Fatalf("Error creating filesytem structure: %s", err)
 			}
 			extraPath := path.Join(testDir2, test.extraDir)
-			err = filesystem.FS.MkdirAll(extraPath, 0o644)
+			err = filesystem.MkdirAll(extraPath, 0o644)
 			if err != nil {
 				t.Fatalf("Error creating filesytem structure: %s", err)
 			}
@@ -504,7 +504,7 @@ func Test_CompositeKey_AddPath_WithExtraDirIgnored_Works(t *testing.T) {
 				t.Fatalf("Error creating filesytem structure: %s", err)
 			}
 			extraPath := path.Join(testDir2, test.extraDir)
-			err = filesystem.FS.MkdirAll(extraPath, 0o644)
+			err = filesystem.MkdirAll(extraPath, 0o644)
 			if err != nil {
 				t.Fatalf("Error creating filesytem structure: %s", err)
 			}

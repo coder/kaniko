@@ -914,7 +914,7 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 			return nil, err
 		}
 		dstDir := filepath.Join(config.KanikoDir, strconv.Itoa(index))
-		if err := filesystem.FS.MkdirAll(dstDir, 0o644); err != nil {
+		if err := filesystem.MkdirAll(dstDir, 0o644); err != nil {
 			return nil, errors.Wrap(err,
 				fmt.Sprintf("to create workspace for stage %s",
 					stageIdxToDigest[strconv.Itoa(index)],
@@ -1202,7 +1202,7 @@ func extractImageToDependencyDir(name string, image v1.Image) error {
 	t := timing.Start("Extracting Image to Dependency Dir")
 	defer timing.DefaultRun.Stop(t)
 	dependencyDir := filepath.Join(config.KanikoDir, name)
-	if err := filesystem.FS.MkdirAll(dependencyDir, 0o755); err != nil {
+	if err := filesystem.MkdirAll(dependencyDir, 0o755); err != nil {
 		return err
 	}
 	logrus.Debugf("Trying to extract to %s", dependencyDir)
@@ -1219,7 +1219,7 @@ func saveStageAsTarball(path string, image v1.Image) error {
 	}
 	tarPath := filepath.Join(config.KanikoIntermediateStagesDir, path)
 	logrus.Infof("Storing source image from stage %s at path %s", path, tarPath)
-	if err := filesystem.FS.MkdirAll(filepath.Dir(tarPath), 0o750); err != nil {
+	if err := filesystem.MkdirAll(filepath.Dir(tarPath), 0o750); err != nil {
 		return err
 	}
 	return tarball.WriteToFile(tarPath, destRef, image)

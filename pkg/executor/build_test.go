@@ -443,7 +443,7 @@ func Test_filesToSave(t *testing.T) {
 				p := filepath.Join(tmpDir, f)
 				dir := filepath.Dir(p)
 				if dir != "." {
-					if err := filesystem.FS.MkdirAll(dir, 0o755); err != nil {
+					if err := filesystem.MkdirAll(dir, 0o755); err != nil {
 						t.Errorf("error making dir: %s", err)
 					}
 				}

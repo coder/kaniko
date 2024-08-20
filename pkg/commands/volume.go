@@ -54,7 +54,7 @@ func (v *VolumeCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.
 		// Only create and snapshot the dir if it didn't exist already
 		if _, err := filesystem.FS.Stat(volume); os.IsNotExist(err) {
 			logrus.Infof("Creating directory %s", volume)
-			if err := filesystem.FS.MkdirAll(volume, 0o755); err != nil {
+			if err := filesystem.MkdirAll(volume, 0o755); err != nil {
 				return fmt.Errorf("could not create directory for volume %s: %w", volume, err)
 			}
 		}

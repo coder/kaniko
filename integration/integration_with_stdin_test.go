@@ -38,7 +38,7 @@ func TestBuildWithStdin(t *testing.T) {
 	testDir := "test_dir"
 	testDirLongPath := filepath.Join(cwd, testDir)
 
-	if err := filesystem.FS.MkdirAll(testDirLongPath, 0o750); err != nil {
+	if err := filesystem.MkdirAll(testDirLongPath, 0o750); err != nil {
 		t.Errorf("Failed to create dir_where_to_extract: %v", err)
 	}
 

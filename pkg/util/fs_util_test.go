@@ -50,7 +50,7 @@ func Test_DetectFilesystemSkiplist(t *testing.T) {
 	232 228 0:101 / /sys ro,nosuid,nodev,noexec,relatime - sysfs sysfs ro`
 
 	path := filepath.Join(testDir, "mountinfo")
-	if err := filesystem.FS.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	if err := filesystem.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatalf("Error creating tempdir: %s", err)
 	}
 	if err := filesystem.WriteFile(path, []byte(fileContents), 0o644); err != nil {
@@ -849,7 +849,7 @@ func TestCopySymlink(t *testing.T) {
 			tc := tc
 			t.Parallel()
 			r := t.TempDir()
-			filesystem.FS.MkdirAll(filepath.Join(r, filepath.Dir(tc.linkTarget)), 0o777)
+			filesystem.MkdirAll(filepath.Join(r, filepath.Dir(tc.linkTarget)), 0o777)
 			tc.linkTarget = filepath.Join(r, tc.linkTarget)
 			filesystem.WriteFile(tc.linkTarget, nil, 0o644)
 

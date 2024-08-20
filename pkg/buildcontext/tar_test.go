@@ -39,7 +39,7 @@ func TestBuildWithLocalTar(t *testing.T) {
 	testDirLongPath := filepath.Join(cwd, testDir)
 	dirUnpack := filepath.Join(testDirLongPath, "dir_where_to_unpack")
 
-	if err := filesystem.FS.MkdirAll(dirUnpack, 0o750); err != nil {
+	if err := filesystem.MkdirAll(dirUnpack, 0o750); err != nil {
 		t.Errorf("Failed to create dir_where_to_extract: %v", err)
 	}
 

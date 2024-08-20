@@ -158,7 +158,7 @@ func writeDigestFile(path string, digestByteArray []byte) error {
 
 	parentDir := filepath.Dir(path)
 	if _, err := filesystem.FS.Stat(parentDir); os.IsNotExist(err) {
-		if err := filesystem.FS.MkdirAll(parentDir, 0o700); err != nil {
+		if err := filesystem.MkdirAll(parentDir, 0o700); err != nil {
 			logrus.Debugf("Error creating %s, %s", parentDir, err)
 			return err
 		}

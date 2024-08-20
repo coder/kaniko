@@ -72,7 +72,7 @@ var RootCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if _, err := filesystem.FS.Stat(opts.CacheDir); os.IsNotExist(err) {
-			err = filesystem.FS.MkdirAll(opts.CacheDir, 0o755)
+			err = filesystem.MkdirAll(opts.CacheDir, 0o755)
 			if err != nil {
 				exit(errors.Wrap(err, "Failed to create cache directory"))
 			}

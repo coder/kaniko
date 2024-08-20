@@ -447,6 +447,8 @@ func Time(img v1.Image, t time.Time) (v1.Image, error) {
 }
 
 func layerTime(layer v1.Layer, t time.Time) (v1.Layer, error) {
+	return layer, nil
+
 	layerReader, err := layer.Uncompressed()
 	if err != nil {
 		return nil, fmt.Errorf("getting layer: %w", err)
@@ -468,7 +470,7 @@ func layerTime(layer v1.Layer, t time.Time) (v1.Layer, error) {
 
 		header.ModTime = t
 
-		//PAX and GNU Format support additional timestamps in the header
+		// PAX and GNU Format support additional timestamps in the header
 		if header.Format == tar.FormatPAX || header.Format == tar.FormatGNU {
 			header.AccessTime = t
 			header.ChangeTime = t
