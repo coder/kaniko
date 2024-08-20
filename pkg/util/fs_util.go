@@ -94,7 +94,9 @@ var skipKanikoDir = func() otiai10Cpy.Options {
 		Skip: func(info os.FileInfo, src, dest string) (bool, error) {
 			return strings.HasSuffix(src, "/kaniko"), nil
 		},
-		FS: filesystem.IOFS(),
+		// TODO(mafredri): Library only uses opt.FS partially, Mkdir breaks it:
+		// https://github.com/otiai10/copy/issues/153
+		// FS: filesystem.IOFS(),
 	}
 }
 
