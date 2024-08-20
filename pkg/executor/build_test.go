@@ -20,7 +20,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"fmt"
-	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -31,6 +30,7 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/commands"
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 	"github.com/containerd/containerd/platforms"
@@ -195,7 +195,6 @@ func Test_stageBuilder_shouldTakeSnapshot(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			if tt.fields.opts == nil {
 				tt.fields.opts = &config.KanikoOptions{}
 			}
@@ -369,8 +368,8 @@ COPY --from=second /bar /bat
 				initializeConfig = tt.args.mockInitConfig
 			}
 
-			f, _ := os.CreateTemp("", "")
-			os.WriteFile(f.Name(), []byte(tt.args.dockerfile), 0755)
+			f, _ := filesystem.CreateTemp("", "")
+			filesystem.WriteFile(f.Name(), []byte(tt.args.dockerfile), 0o755)
 			opts := &config.KanikoOptions{
 				DockerfilePath: f.Name(),
 				CustomPlatform: platforms.Format(platforms.Normalize(platforms.DefaultSpec())),
@@ -444,11 +443,11 @@ func Test_filesToSave(t *testing.T) {
 				p := filepath.Join(tmpDir, f)
 				dir := filepath.Dir(p)
 				if dir != "." {
-					if err := os.MkdirAll(dir, 0755); err != nil {
+					if err := filesystem.MkdirAll(dir, 0o755); err != nil {
 						t.Errorf("error making dir: %s", err)
 					}
 				}
-				fp, err := os.Create(p)
+				fp, err := filesystem.FS.Create(p)
 				if err != nil {
 					t.Errorf("error making file: %s", err)
 				}
@@ -618,10 +617,12 @@ func Test_stageBuilder_optimize(t *testing.T) {
 			cf := &v1.ConfigFile{}
 			snap := &fakeSnapShotter{}
 			lc := &fakeLayerCache{retrieve: tc.retrieve}
-			sb := &stageBuilder{opts: tc.opts, cf: cf, snapshotter: snap, layerCache: lc,
-				args: dockerfile.NewBuildArgs([]string{})}
+			sb := &stageBuilder{
+				opts: tc.opts, cf: cf, snapshotter: snap, layerCache: lc,
+				args: dockerfile.NewBuildArgs([]string{}),
+			}
 			ck := CompositeCache{}
-			file, err := os.CreateTemp("", "foo")
+			file, err := filesystem.CreateTemp("", "foo")
 			if err != nil {
 				t.Error(err)
 			}
@@ -634,7 +635,6 @@ func Test_stageBuilder_optimize(t *testing.T) {
 			if err != nil {
 				t.Errorf("Expected error to be nil but was %v", err)
 			}
-
 		})
 	}
 }
@@ -1063,8 +1063,8 @@ func Test_stageBuilder_build(t *testing.T) {
 		FROM ubuntu:16.04
 		COPY %s foo.txt
 		`, filename)
-			f, _ := os.CreateTemp("", "")
-			os.WriteFile(f.Name(), []byte(dockerFile), 0755)
+			f, _ := filesystem.CreateTemp("", "")
+			filesystem.WriteFile(f.Name(), []byte(dockerFile), 0o755)
 			opts := &config.KanikoOptions{
 				DockerfilePath:  f.Name(),
 				Cache:           true,
@@ -1129,8 +1129,8 @@ func Test_stageBuilder_build(t *testing.T) {
 FROM ubuntu:16.04
 COPY %s foo.txt
 `, filename)
-			f, _ := os.CreateTemp("", "")
-			os.WriteFile(f.Name(), []byte(dockerFile), 0755)
+			f, _ := filesystem.CreateTemp("", "")
+			filesystem.WriteFile(f.Name(), []byte(dockerFile), 0o755)
 			opts := &config.KanikoOptions{
 				DockerfilePath:  f.Name(),
 				Cache:           true,
@@ -1208,8 +1208,8 @@ FROM ubuntu:16.04
 RUN foobar
 COPY %s bar.txt
 `, filename)
-			f, _ := os.CreateTemp("", "")
-			os.WriteFile(f.Name(), []byte(dockerFile), 0755)
+			f, _ := filesystem.CreateTemp("", "")
+			filesystem.WriteFile(f.Name(), []byte(dockerFile), 0o755)
 			opts := &config.KanikoOptions{
 				DockerfilePath: f.Name(),
 			}
@@ -1282,8 +1282,8 @@ FROM ubuntu:16.04
 COPY %s bar.txt
 RUN foobar
 `, filename)
-			f, _ := os.CreateTemp("", "")
-			os.WriteFile(f.Name(), []byte(dockerFile), 0755)
+			f, _ := filesystem.CreateTemp("", "")
+			filesystem.WriteFile(f.Name(), []byte(dockerFile), 0o755)
 			opts := &config.KanikoOptions{
 				DockerfilePath: f.Name(),
 			}
@@ -1450,7 +1450,7 @@ RUN foobar
 		t.Run(tc.description, func(t *testing.T) {
 			var fileName string
 			if tc.commands == nil {
-				file, err := os.CreateTemp("", "foo")
+				file, err := filesystem.CreateTemp("", "foo")
 				if err != nil {
 					t.Error(err)
 				}
@@ -1482,7 +1482,7 @@ RUN foobar
 			}
 			keys := []string{}
 			sb := &stageBuilder{
-				args:        dockerfile.NewBuildArgs([]string{}), //required or code will panic
+				args:        dockerfile.NewBuildArgs([]string{}), // required or code will panic
 				image:       tc.image,
 				opts:        tc.opts,
 				cf:          cf,
@@ -1521,7 +1521,6 @@ RUN foobar
 			assertCacheKeys(t, tc.pushedCacheKeys, keys, "push")
 
 			config.RootDir = tmp
-
 		})
 	}
 }
@@ -1574,7 +1573,7 @@ func tempDirAndFile(t *testing.T) (string, []string) {
 	dir := t.TempDir()
 	for _, filename := range filenames {
 		filepath := filepath.Join(dir, filename)
-		err := os.WriteFile(filepath, []byte(`meow`), 0777)
+		err := filesystem.WriteFile(filepath, []byte(`meow`), 0o777)
 		if err != nil {
 			t.Errorf("could not create temp file %v", err)
 		}
@@ -1590,7 +1589,7 @@ func generateTar(t *testing.T, dir string, fileNames ...string) []byte {
 
 	for _, filename := range fileNames {
 		filePath := filepath.Join(dir, filename)
-		info, err := os.Stat(filePath)
+		info, err := filesystem.FS.Stat(filePath)
 		if err != nil {
 			t.Errorf("could not get file info for temp file %v", err)
 		}
@@ -1603,7 +1602,7 @@ func generateTar(t *testing.T, dir string, fileNames ...string) []byte {
 			t.Errorf("could not write tar header %v", err)
 		}
 
-		content, err := os.ReadFile(filePath)
+		content, err := filesystem.ReadFile(filePath)
 		if err != nil {
 			t.Errorf("could not read tempfile %v", err)
 		}
@@ -1696,7 +1695,6 @@ func Test_stageBuild_populateCompositeKeyForCopyCommand(t *testing.T) {
 							actualCacheKey,
 						)
 					}
-
 				})
 			}
 		})

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,6 +29,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
@@ -50,7 +50,7 @@ func ParseStages(opts *config.KanikoOptions) ([]instructions.Stage, []instructio
 			}
 			d, err = io.ReadAll(response.Body)
 		} else {
-			d, err = os.ReadFile(opts.DockerfilePath)
+			d, err = filesystem.ReadFile(opts.DockerfilePath)
 		}
 	}
 

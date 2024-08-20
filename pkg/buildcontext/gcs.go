@@ -19,11 +19,11 @@ package buildcontext
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
 	kConfig "github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/pkg/util/bucket"
 	"github.com/sirupsen/logrus"
@@ -69,7 +69,7 @@ func unpackTarFromGCSBucket(bucketName, item, directory string) error {
 	}
 	// Remove the tar so it doesn't interfere with subsequent commands
 	logrus.Debugf("Deleting %s", tarPath)
-	return os.Remove(tarPath)
+	return filesystem.FS.Remove(tarPath)
 }
 
 // getTarFromBucket gets context.tar.gz from the GCS bucket and saves it to the filesystem
@@ -87,7 +87,7 @@ func getTarFromBucket(bucketName, filepathInBucket, directory string) (string, e
 	}
 	defer reader.Close()
 	tarPath := filepath.Join(directory, constants.ContextTar)
-	if err := util.CreateFile(tarPath, reader, 0600, 0, 0); err != nil {
+	if err := util.CreateFile(tarPath, reader, 0o600, 0, 0); err != nil {
 		return "", err
 	}
 	logrus.Debugf("Copied tarball %s from GCS bucket %s to %s", constants.ContextTar, bucketName, tarPath)

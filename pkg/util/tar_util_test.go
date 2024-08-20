@@ -28,12 +28,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 )
 
-var regularFiles = []string{"file", "file.tar", "file.tar.gz"}
-var uncompressedTars = []string{"uncompressed", "uncompressed.tar"}
-var compressedTars = []string{"compressed", "compressed.tar.gz"}
+var (
+	regularFiles     = []string{"file", "file.tar", "file.tar.gz"}
+	uncompressedTars = []string{"uncompressed", "uncompressed.tar"}
+	compressedTars   = []string{"compressed", "compressed.tar.gz"}
+)
 
 func Test_IsLocalTarArchive(t *testing.T) {
 	testDir := t.TempDir()
@@ -61,12 +64,12 @@ func Test_AddFileToTar(t *testing.T) {
 	testDir := t.TempDir()
 
 	path := filepath.Join(testDir, regularFiles[0])
-	if err := os.WriteFile(path, []byte("hello"), os.ModePerm); err != nil {
+	if err := filesystem.WriteFile(path, []byte("hello"), os.ModePerm); err != nil {
 		t.Fatal(err)
 	}
 	// use a pre-determined time with non-zero microseconds to avoid flakiness
 	mtime := time.UnixMicro(1635533172891395)
-	if err := os.Chtimes(path, mtime, mtime); err != nil {
+	if err := filesystem.FS.Chtimes(path, mtime, mtime); err != nil {
 		t.Fatal(err)
 	}
 
@@ -97,7 +100,7 @@ func setUpFilesAndTars(testDir string) error {
 	}
 
 	for _, uncompressedTar := range uncompressedTars {
-		tarFile, err := os.Create(filepath.Join(testDir, uncompressedTar))
+		tarFile, err := filesystem.FS.Create(filepath.Join(testDir, uncompressedTar))
 		if err != nil {
 			return err
 		}
@@ -107,7 +110,7 @@ func setUpFilesAndTars(testDir string) error {
 	}
 
 	for _, compressedTar := range compressedTars {
-		tarFile, err := os.Create(filepath.Join(testDir, compressedTar))
+		tarFile, err := filesystem.FS.Create(filepath.Join(testDir, compressedTar))
 		if err != nil {
 			return err
 		}
@@ -140,7 +143,7 @@ func Test_CreateTarballOfDirectory(t *testing.T) {
 	testutil.CheckError(t, wantErr, err)
 
 	extracedFilesDir := filepath.Join(tmpDir, "extracted")
-	err = os.Mkdir(extracedFilesDir, 0755)
+	err = filesystem.FS.Mkdir(extracedFilesDir, 0o755)
 	if err != nil {
 		t.Error(err)
 		return
@@ -148,7 +151,7 @@ func Test_CreateTarballOfDirectory(t *testing.T) {
 	files, err := UnTar(f, extracedFilesDir)
 	testutil.CheckError(t, wantErr, err)
 	for _, filePath := range files {
-		fileInfo, err := os.Lstat(filePath)
+		fileInfo, err := filesystem.FS.Lstat(filePath)
 		testutil.CheckError(t, wantErr, err)
 		if fileInfo.IsDir() {
 			// skip directory
@@ -157,7 +160,7 @@ func Test_CreateTarballOfDirectory(t *testing.T) {
 		if modTime := fileInfo.ModTime(); modTime.Equal(time.Unix(0, 0)) {
 			t.Errorf("unexpected modtime %q of %q", modTime, fileInfo.Name())
 		}
-		file, err := os.Open(filePath)
+		file, err := filesystem.FS.Open(filePath)
 		testutil.CheckError(t, wantErr, err)
 		body, err := io.ReadAll(file)
 		testutil.CheckError(t, wantErr, err)
@@ -170,7 +173,7 @@ func createFilesInTempDir(t *testing.T, tmpDir string) {
 	for i := 0; i < 2; i++ {
 		fName := filepath.Join(tmpDir, fmt.Sprint(i))
 		content := fmt.Sprintf("hello from %d\n", i)
-		if err := os.WriteFile(fName, []byte(content), 0666); err != nil {
+		if err := filesystem.WriteFile(fName, []byte(content), 0o666); err != nil {
 			t.Error(err)
 			return
 		}
@@ -184,7 +187,7 @@ func Test_NewReproducibleTar(t *testing.T) {
 
 	// Create tarball ignoring timestamps
 	tw := NewReproducibleTar(f)
-	if err := filepath.WalkDir(tmpDir, func(path string, _ fs.DirEntry, err error) error {
+	if err := filesystem.WalkDir(tmpDir, func(path string, _ fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -197,7 +200,7 @@ func Test_NewReproducibleTar(t *testing.T) {
 	}
 
 	extracedFilesDir := filepath.Join(tmpDir, "extracted")
-	if err := os.Mkdir(extracedFilesDir, 0755); err != nil {
+	if err := filesystem.FS.Mkdir(extracedFilesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	files, err := UnTar(f, extracedFilesDir)
@@ -205,7 +208,7 @@ func Test_NewReproducibleTar(t *testing.T) {
 		t.Fatalf("untar: %s", err.Error())
 	}
 	for _, filePath := range files {
-		fileInfo, err := os.Lstat(filePath)
+		fileInfo, err := filesystem.FS.Lstat(filePath)
 		if err != nil {
 			t.Fatalf("stat %q: %s", filePath, err.Error())
 		}
@@ -217,7 +220,7 @@ func Test_NewReproducibleTar(t *testing.T) {
 		if modTime := fileInfo.ModTime(); !modTime.Equal(time.Unix(0, 0)) {
 			t.Errorf("unexpected modtime %q of %q", modTime, filePath)
 		}
-		file, err := os.Open(filePath)
+		file, err := filesystem.FS.Open(filePath)
 		if err != nil {
 			t.Fatalf("open file %q: %s", filePath, err.Error())
 		}

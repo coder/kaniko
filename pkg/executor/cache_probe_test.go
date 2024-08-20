@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +29,7 @@ import (
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 )
 
@@ -40,7 +40,7 @@ func TestDoCacheProbe(t *testing.T) {
 		dockerFile := `FROM scratch
 COPY foo/bar.txt copied/
 `
-		err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		err := filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		testutil.CheckNoError(t, err)
 		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
@@ -67,7 +67,7 @@ COPY foo/bar.txt copied/
 		dockerFile := `FROM scratch
 COPY foo/bar.txt copied/
 `
-		err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		err := filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		testutil.CheckNoError(t, err)
 		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
@@ -99,7 +99,7 @@ COPY foo/bar.txt copied/
 ARG foo=bar
 ENV baz=qux
 `
-		err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		err := filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		testutil.CheckNoError(t, err)
 		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
@@ -130,7 +130,7 @@ ENV baz=qux
 		dockerFile := `FROM scratch
 COPY foo/bar.txt copied/
 `
-		err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		err := filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		testutil.CheckNoError(t, err)
 		regCache := setupCacheRegistry(t)
 		opts := &config.KanikoOptions{
@@ -156,7 +156,7 @@ COPY foo/bar.txt copied/
 COPY foo/bar.txt copied/
 COPY foo/baz.txt copied/
 `
-		err = os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+		err = filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 		testutil.CheckNoError(t, err)
 		_, err = DoCacheProbe(opts)
 		if err == nil || !strings.Contains(err.Error(), "uncached COPY command") {
@@ -179,7 +179,7 @@ COPY foo/baz.txt copied/
 			
 			From scratch as second
 			COPY --from=first copied/bam.txt output/bam.txt`
-			err := os.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
+			err := filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 			testutil.CheckNoError(t, err)
 			opts := &config.KanikoOptions{
 				DockerfilePath: filepath.Join(testDir, "workspace", "Dockerfile"),
@@ -250,20 +250,20 @@ func setupCacheProbeTests(t *testing.T) (string, func()) {
 	//     - /foo
 	//          - bar.txt
 	//          - baz.txt
-	if err := os.MkdirAll(filepath.Join(testDir, "kaniko/0"), 0755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(testDir, "kaniko/0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	workspace := filepath.Join(testDir, "workspace")
 	// Make foo
-	if err := os.MkdirAll(filepath.Join(workspace, "foo"), 0755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(workspace, "foo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	file := filepath.Join(workspace, "foo", "bar.txt")
-	if err := os.WriteFile(file, []byte("hello"), 0755); err != nil {
+	if err := filesystem.WriteFile(file, []byte("hello"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	file2 := filepath.Join(workspace, "foo", "baz.txt")
-	if err := os.WriteFile(file2, []byte("world"), 0755); err != nil {
+	if err := filesystem.WriteFile(file2, []byte("world"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -271,7 +271,7 @@ func setupCacheProbeTests(t *testing.T) (string, func()) {
 	config.RootDir = testDir
 	config.KanikoDir = fmt.Sprintf("%s/%s", testDir, "kaniko")
 	// Write path to ignore list
-	if err := os.MkdirAll(filepath.Join(testDir, "proc"), 0755); err != nil {
+	if err := filesystem.MkdirAll(filepath.Join(testDir, "proc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	mFile := filepath.Join(testDir, "proc/mountinfo")
@@ -279,7 +279,7 @@ func setupCacheProbeTests(t *testing.T) (string, func()) {
 		`36 35 98:0 /kaniko %s/kaniko rw,noatime master:1 - ext3 /dev/root rw,errors=continue
 36 35 98:0 /proc %s/proc rw,noatime master:1 - ext3 /dev/root rw,errors=continue
 `, testDir, testDir)
-	if err := os.WriteFile(mFile, []byte(mountInfo), 0644); err != nil {
+	if err := filesystem.WriteFile(mFile, []byte(mountInfo), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	config.MountInfoPath = mFile

@@ -14,17 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package filesystem
+package util
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
 
-	"github.com/GoogleContainerTools/kaniko/pkg/util"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 )
 
 func Test_ResolvePaths(t *testing.T) {
@@ -62,25 +61,25 @@ func Test_ResolvePaths(t *testing.T) {
 				fLink := filepath.Join(dir, "link", f)
 				fTarget := filepath.Join(dir, "target", f)
 
-				if err := os.MkdirAll(filepath.Dir(fTarget), 0777); err != nil {
+				if err := filesystem.MkdirAll(filepath.Dir(fTarget), 0o777); err != nil {
 					t.Fatal(err)
 				}
 
-				if err := os.WriteFile(fTarget, []byte{}, 0777); err != nil {
+				if err := filesystem.WriteFile(fTarget, []byte{}, 0o777); err != nil {
 					t.Fatal(err)
 				}
 
-				if err := os.MkdirAll(filepath.Dir(fLink), 0777); err != nil {
+				if err := filesystem.MkdirAll(filepath.Dir(fLink), 0o777); err != nil {
 					t.Fatal(err)
 				}
 
-				if err := os.Symlink(fTarget, fLink); err != nil {
+				if err := filesystem.FS.Symlink(fTarget, fLink); err != nil {
 					t.Fatal(err)
 				}
 			}
 
 			t.Run("none are ignored", func(t *testing.T) {
-				wl := []util.IgnoreListEntry{}
+				wl := []IgnoreListEntry{}
 
 				inputFiles := []string{}
 				expectedFiles := []string{}
@@ -102,7 +101,7 @@ func Test_ResolvePaths(t *testing.T) {
 			})
 
 			t.Run("some are ignored", func(t *testing.T) {
-				wl := []util.IgnoreListEntry{
+				wl := []IgnoreListEntry{
 					{
 						Path: filepath.Join(dir, "link", "baz"),
 					},
@@ -118,7 +117,7 @@ func Test_ResolvePaths(t *testing.T) {
 					link := filepath.Join(dir, "link", f)
 					inputFiles = append(inputFiles, link)
 
-					if util.IsInProvidedIgnoreList(link, wl) {
+					if IsInProvidedIgnoreList(link, wl) {
 						t.Logf("skipping %s", link)
 						continue
 					}
@@ -127,7 +126,7 @@ func Test_ResolvePaths(t *testing.T) {
 
 					target := filepath.Join(dir, "target", f)
 
-					if util.IsInProvidedIgnoreList(target, wl) {
+					if IsInProvidedIgnoreList(target, wl) {
 						t.Logf("skipping %s", target)
 						continue
 					}
@@ -138,15 +137,15 @@ func Test_ResolvePaths(t *testing.T) {
 				link := filepath.Join(dir, "link", "zoom/")
 
 				target := filepath.Join(dir, "target", "zaam/")
-				if err := os.MkdirAll(target, 0777); err != nil {
+				if err := filesystem.MkdirAll(target, 0o777); err != nil {
 					t.Fatal(err)
 				}
 
-				if err := os.WriteFile(filepath.Join(target, "meow.txt"), []byte{}, 0777); err != nil {
+				if err := filesystem.WriteFile(filepath.Join(target, "meow.txt"), []byte{}, 0o777); err != nil {
 					t.Fatal(err)
 				}
 
-				if err := os.Symlink(target, link); err != nil {
+				if err := filesystem.FS.Symlink(target, link); err != nil {
 					t.Fatal(err)
 				}
 
@@ -171,7 +170,7 @@ func Test_ResolvePaths(t *testing.T) {
 		inputFiles := []string{}
 		expectedFiles := []string{}
 
-		wl := []util.IgnoreListEntry{}
+		wl := []IgnoreListEntry{}
 
 		files, err := ResolvePaths(inputFiles, wl)
 
@@ -185,13 +184,13 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 		targetDir := filepath.Join(testDir, "bar", "baz")
 
-		if err := os.MkdirAll(targetDir, 0777); err != nil {
+		if err := filesystem.MkdirAll(targetDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
 		targetPath := filepath.Join(targetDir, "bam.txt")
 
-		if err := os.WriteFile(targetPath, []byte("meow"), 0777); err != nil {
+		if err := filesystem.WriteFile(targetPath, []byte("meow"), 0o777); err != nil {
 			t.Fatal(err)
 		}
 
@@ -200,17 +199,17 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 	t.Run("path is a symlink", func(t *testing.T) {
 		testDir, targetPath := setupDirs(t)
-		defer os.RemoveAll(testDir)
+		defer filesystem.FS.RemoveAll(testDir)
 
 		linkDir := filepath.Join(testDir, "foo", "buzz")
 
-		if err := os.MkdirAll(linkDir, 0777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
 		linkPath := filepath.Join(linkDir, "zoom.txt")
 
-		if err := os.Symlink(targetPath, linkPath); err != nil {
+		if err := filesystem.FS.Symlink(targetPath, linkPath); err != nil {
 			t.Fatal(err)
 		}
 
@@ -228,10 +227,10 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 	t.Run("dir ends with / is not a symlink", func(t *testing.T) {
 		testDir, _ := setupDirs(t)
-		defer os.RemoveAll(testDir)
+		defer filesystem.FS.RemoveAll(testDir)
 
 		linkDir := filepath.Join(testDir, "var", "www")
-		if err := os.MkdirAll(linkDir, 0777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
@@ -249,21 +248,21 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 	t.Run("path is a dead symlink", func(t *testing.T) {
 		testDir, targetPath := setupDirs(t)
-		defer os.RemoveAll(testDir)
+		defer filesystem.FS.RemoveAll(testDir)
 
 		linkDir := filepath.Join(testDir, "foo", "buzz")
 
-		if err := os.MkdirAll(linkDir, 0777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
 		linkPath := filepath.Join(linkDir, "zoom.txt")
 
-		if err := os.Symlink(targetPath, linkPath); err != nil {
+		if err := filesystem.FS.Symlink(targetPath, linkPath); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := os.Remove(targetPath); err != nil {
+		if err := filesystem.FS.Remove(targetPath); err != nil {
 			t.Fatal(err)
 		}
 
@@ -281,7 +280,7 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 	t.Run("path is not a symlink", func(t *testing.T) {
 		testDir, targetPath := setupDirs(t)
-		defer os.RemoveAll(testDir)
+		defer filesystem.FS.RemoveAll(testDir)
 
 		expected := targetPath
 
@@ -297,19 +296,19 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 	t.Run("parent of path is a symlink", func(t *testing.T) {
 		testDir, targetPath := setupDirs(t)
-		defer os.RemoveAll(testDir)
+		defer filesystem.FS.RemoveAll(testDir)
 
 		targetDir := filepath.Dir(targetPath)
 
 		linkDir := filepath.Join(testDir, "foo")
 
-		if err := os.MkdirAll(linkDir, 0777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
 		linkDir = filepath.Join(linkDir, "gaz")
 
-		if err := os.Symlink(targetDir, linkDir); err != nil {
+		if err := filesystem.FS.Symlink(targetDir, linkDir); err != nil {
 			t.Fatal(err)
 		}
 
@@ -329,23 +328,23 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 	t.Run("parent of path is a dead symlink", func(t *testing.T) {
 		testDir, targetPath := setupDirs(t)
-		defer os.RemoveAll(testDir)
+		defer filesystem.FS.RemoveAll(testDir)
 
 		targetDir := filepath.Dir(targetPath)
 
 		linkDir := filepath.Join(testDir, "foo")
 
-		if err := os.MkdirAll(linkDir, 0777); err != nil {
+		if err := filesystem.MkdirAll(linkDir, 0o777); err != nil {
 			t.Fatal(err)
 		}
 
 		linkDir = filepath.Join(linkDir, "gaz")
 
-		if err := os.Symlink(targetDir, linkDir); err != nil {
+		if err := filesystem.FS.Symlink(targetDir, linkDir); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := os.RemoveAll(targetDir); err != nil {
+		if err := filesystem.FS.RemoveAll(targetDir); err != nil {
 			t.Fatal(err)
 		}
 
@@ -359,13 +358,13 @@ func Test_resolveSymlinkAncestor(t *testing.T) {
 
 	t.Run("great grandparent of path is a symlink", func(t *testing.T) {
 		testDir, targetPath := setupDirs(t)
-		defer os.RemoveAll(testDir)
+		defer filesystem.FS.RemoveAll(testDir)
 
 		targetDir := filepath.Dir(targetPath)
 
 		linkDir := filepath.Join(testDir, "foo")
 
-		if err := os.Symlink(filepath.Dir(targetDir), linkDir); err != nil {
+		if err := filesystem.FS.Symlink(filepath.Dir(targetDir), linkDir); err != nil {
 			t.Fatal(err)
 		}
 

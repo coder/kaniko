@@ -27,6 +27,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 )
 
 type result struct {
@@ -68,7 +70,7 @@ func TestSnapshotBenchmark(t *testing.T) {
 				r := newResult(t, filepath.Join(benchmarkDir, dockerfile))
 				timeMap.Store(num, r)
 				wg.Done()
-				defer os.Remove(benchmarkDir)
+				defer filesystem.FS.Remove(benchmarkDir)
 			}(num, &err)
 			if err != nil {
 				t.Errorf("could not run benchmark results for num %d due to %s", num, err)
@@ -84,12 +86,11 @@ func TestSnapshotBenchmark(t *testing.T) {
 		t.Logf("%d,%f,%f,%f", d, v.totalBuildTime, v.walkingFiles, v.resolvingFiles)
 		return true
 	})
-
 }
 
 func newResult(t *testing.T, f string) result {
 	var current map[string]time.Duration
-	jsonFile, err := os.Open(f)
+	jsonFile, err := filesystem.FS.Open(f)
 	defer jsonFile.Close()
 	if err != nil {
 		t.Errorf("could not read benchmark file %s", f)
@@ -141,7 +142,7 @@ func TestSnapshotBenchmarkGcloud(t *testing.T) {
 				r := newResult(t, filepath.Join(dir, "results"))
 				t.Log(fmt.Sprintf("%d,%f,%f,%f, %f", num, r.totalBuildTime, r.walkingFiles, r.resolvingFiles, r.hashingFiles))
 				wg.Done()
-				defer os.Remove(dir)
+				defer filesystem.FS.Remove(dir)
 				defer os.Chdir(cwd)
 			}(num)
 		})
@@ -160,7 +161,7 @@ func runInGcloud(dir string, num int) (string, error) {
 	}
 
 	// grab gcs and to temp dir and return
-	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%d", num))
+	tmpDir, err := filesystem.MkdirTemp("", fmt.Sprintf("%d", num))
 	if err != nil {
 		return "", err
 	}

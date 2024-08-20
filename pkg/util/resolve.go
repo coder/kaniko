@@ -14,14 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package filesystem
+package util
 
 import (
 	"os"
 	"path/filepath"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
-	"github.com/GoogleContainerTools/kaniko/pkg/util"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -34,14 +34,14 @@ import (
 // * If path is a symlink, resolve it's target. If the target is not ignored add it to the
 // output set.
 // * Add all ancestors of each path to the output set.
-func ResolvePaths(paths []string, wl []util.IgnoreListEntry) (pathsToAdd []string, err error) {
+func ResolvePaths(paths []string, wl []IgnoreListEntry) (pathsToAdd []string, err error) {
 	logrus.Tracef("Resolving paths %s", paths)
 
 	fileSet := make(map[string]bool)
 
 	for _, f := range paths {
 		// If the given path is part of the ignorelist ignore it
-		if util.IsInProvidedIgnoreList(f, wl) {
+		if IsInProvidedIgnoreList(f, wl) {
 			logrus.Debugf("Path %s is in list to ignore, ignoring it", f)
 			continue
 		}
@@ -80,7 +80,7 @@ func ResolvePaths(paths []string, wl []util.IgnoreListEntry) (pathsToAdd []strin
 
 		// If the given path is a symlink and the target is part of the ignorelist
 		// ignore the target
-		if util.CheckCleanedPathAgainstProvidedIgnoreList(evaled, wl) {
+		if CheckCleanedPathAgainstProvidedIgnoreList(evaled, wl) {
 			logrus.Debugf("Path %s is ignored, ignoring it", evaled)
 			continue
 		}
@@ -105,7 +105,7 @@ func filesWithParentDirs(files []string) []string {
 		file = filepath.Clean(file)
 		filesSet[file] = true
 
-		for _, dir := range util.ParentDirectories(file) {
+		for _, dir := range ParentDirectories(file) {
 			dir = filepath.Clean(dir)
 			filesSet[dir] = true
 		}
@@ -134,12 +134,12 @@ func resolveSymlinkAncestor(path string) (string, error) {
 
 loop:
 	for newPath != config.RootDir {
-		fi, err := os.Lstat(newPath)
+		fi, err := filesystem.FS.Lstat(newPath)
 		if err != nil {
 			return "", errors.Wrap(err, "resolvePaths: failed to lstat")
 		}
 
-		if util.IsSymlink(fi) {
+		if IsSymlink(fi) {
 			last = filepath.Base(newPath)
 			newPath = filepath.Dir(newPath)
 		} else {

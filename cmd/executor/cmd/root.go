@@ -31,6 +31,7 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
 	"github.com/GoogleContainerTools/kaniko/pkg/executor"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/logging"
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
@@ -210,7 +211,7 @@ var RootCmd = &cobra.Command{
 				}
 				logrus.Infof("Benchmark file written at %s", benchmarkFile)
 			} else {
-				f, err := os.Create(benchmarkFile)
+				f, err := filesystem.FS.Create(benchmarkFile)
 				if err != nil {
 					logrus.Warnf("Unable to create benchmarking file %s: %s", benchmarkFile, err)
 					return
@@ -305,7 +306,7 @@ func checkKanikoDir(dir string) error {
 			return err
 		}
 
-		if err := os.RemoveAll(constants.DefaultKanikoPath); err != nil {
+		if err := filesystem.FS.RemoveAll(constants.DefaultKanikoPath); err != nil {
 			return err
 		}
 		// After remove DefaultKankoPath, the DOKCER_CONFIG env will point to a non-exist dir, so we should update DOCKER_CONFIG env to new dir
@@ -437,7 +438,7 @@ func resolveSourceContext() error {
 	}
 	if ctxSubPath != "" {
 		opts.SrcContext = filepath.Join(opts.SrcContext, ctxSubPath)
-		if _, err := os.Stat(opts.SrcContext); os.IsNotExist(err) {
+		if _, err := filesystem.FS.Stat(opts.SrcContext); os.IsNotExist(err) {
 			return err
 		}
 	}

@@ -18,12 +18,12 @@ package testutil
 
 import (
 	"fmt"
-	"os"
 	"os/user"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -31,10 +31,10 @@ import (
 func SetupFiles(path string, files map[string]string) error {
 	for p, c := range files {
 		path := filepath.Join(path, p)
-		if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+		if err := filesystem.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			return err
 		}
-		if err := os.WriteFile(path, []byte(c), 0644); err != nil {
+		if err := filesystem.WriteFile(path, []byte(c), 0o644); err != nil {
 			return err
 		}
 	}
@@ -48,6 +48,7 @@ type CurrentUser struct {
 }
 
 func GetCurrentUser(t *testing.T) CurrentUser {
+	t.Helper()
 	currentUser, err := user.Current()
 	if err != nil {
 		t.Fatalf("Cannot get current user: %s", err)
@@ -90,12 +91,14 @@ func CheckErrorAndDeepEqual(t *testing.T, shouldErr bool, err error, expected, a
 }
 
 func CheckError(t *testing.T, shouldErr bool, err error) {
+	t.Helper()
 	if err := checkErr(shouldErr, err); err != nil {
 		t.Error(err)
 	}
 }
 
 func CheckNoError(t *testing.T, err error) {
+	t.Helper()
 	if err != nil {
 		t.Errorf("%+v", err)
 	}

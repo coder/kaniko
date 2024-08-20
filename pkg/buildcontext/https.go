@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	kConfig "github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/sirupsen/logrus"
 )
@@ -36,7 +36,6 @@ type HTTPSTar struct {
 
 // UnpackTarFromBuildContext downloads context file from https server
 func (h *HTTPSTar) UnpackTarFromBuildContext() (directory string, err error) {
-
 	logrus.Info("Retrieving https tar file")
 
 	// Create directory and target file for downloading the context file
@@ -76,5 +75,5 @@ func (h *HTTPSTar) UnpackTarFromBuildContext() (directory string, err error) {
 	logrus.Info("Extracted https tar file")
 
 	// Remove the tar so it doesn't interfere with subsequent commands
-	return directory, os.Remove(tarPath)
+	return directory, filesystem.FS.Remove(tarPath)
 }

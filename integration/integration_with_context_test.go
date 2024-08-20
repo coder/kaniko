@@ -22,6 +22,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 )
 
 func TestWithContext(t *testing.T) {
@@ -31,7 +33,7 @@ func TestWithContext(t *testing.T) {
 	}
 
 	dir := filepath.Join(cwd, "dockerfiles-with-context")
-	entries, err := os.ReadDir(dir)
+	entries, err := filesystem.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +70,6 @@ func TestWithContext(t *testing.T) {
 
 			expected := fmt.Sprintf(emptyContainerDiff, dockerImage, kanikoImage, dockerImage, kanikoImage)
 			checkContainerDiffOutput(t, diff, expected)
-
 		})
 	}
 

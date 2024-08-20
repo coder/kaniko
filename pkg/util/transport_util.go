@@ -20,12 +20,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"os"
+	"net/http"
 	"strings"
 
-	"net/http"
-
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,7 +42,7 @@ func (p *X509CertPool) value() *x509.CertPool {
 }
 
 func (p *X509CertPool) append(path string) error {
-	pem, err := os.ReadFile(path)
+	pem, err := filesystem.ReadFile(path)
 	if err != nil {
 		return err
 	}
@@ -57,8 +56,7 @@ type KeyPairLoader interface {
 	load(string, string) (tls.Certificate, error)
 }
 
-type X509KeyPairLoader struct {
-}
+type X509KeyPairLoader struct{}
 
 func (p *X509KeyPairLoader) load(certFile, keyFile string) (tls.Certificate, error) {
 	return tls.LoadX509KeyPair(certFile, keyFile)

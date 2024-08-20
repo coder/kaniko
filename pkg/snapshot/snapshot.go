@@ -19,7 +19,6 @@ package snapshot
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -71,7 +70,7 @@ func (s *Snapshotter) Key() (string, error) {
 // TakeSnapshot takes a snapshot of the specified files, avoiding directories in the ignorelist, and creates
 // a tarball of the changed files. Return contents of the tarball, and whether or not any files were changed
 func (s *Snapshotter) TakeSnapshot(files []string, shdCheckDelete bool, forceBuildMetadata bool) (string, error) {
-	f, err := os.CreateTemp(config.KanikoDir, "")
+	f, err := filesystem.CreateTemp(config.KanikoDir, "")
 	if err != nil {
 		return "", err
 	}
@@ -83,7 +82,7 @@ func (s *Snapshotter) TakeSnapshot(files []string, shdCheckDelete bool, forceBui
 		return "", nil
 	}
 
-	filesToAdd, err := filesystem.ResolvePaths(files, s.ignorelist)
+	filesToAdd, err := util.ResolvePaths(files, s.ignorelist)
 	if err != nil {
 		return "", err
 	}
@@ -135,7 +134,7 @@ func (s *Snapshotter) TakeSnapshot(files []string, shdCheckDelete bool, forceBui
 // TakeSnapshotFS takes a snapshot of the filesystem, avoiding directories in the ignorelist, and creates
 // a tarball of the changed files.
 func (s *Snapshotter) TakeSnapshotFS() (string, error) {
-	f, err := os.CreateTemp(s.getSnashotPathPrefix(), "")
+	f, err := filesystem.CreateTemp(s.getSnashotPathPrefix(), "")
 	if err != nil {
 		return "", err
 	}
@@ -174,12 +173,16 @@ func (s *Snapshotter) scanFullFilesystem() ([]string, []string, error) {
 	// which can lag if sync is not called. Unfortunately there can still be lag if too much data needs
 	// to be flushed or the disk does its own caching/buffering.
 	if runtime.GOOS == "linux" {
-		dir, err := os.Open(s.directory)
+		dir, err := filesystem.FS.Open(s.directory)
 		if err != nil {
 			return nil, nil, err
 		}
 		defer dir.Close()
-		_, _, errno := syscall.Syscall(unix.SYS_SYNCFS, dir.Fd(), 0, 0)
+		dirfd, ok := dir.(interface{ Fd() uintptr })
+		if !ok {
+			return nil, nil, errors.New("filesystem open did not return a directory with a file descriptor")
+		}
+		_, _, errno := syscall.Syscall(unix.SYS_SYNCFS, dirfd.Fd(), 0, 0)
 		if errno != 0 {
 			return nil, nil, errno
 		}
@@ -196,7 +199,7 @@ func (s *Snapshotter) scanFullFilesystem() ([]string, []string, error) {
 	timer := timing.Start("Resolving Paths")
 
 	filesToAdd := []string{}
-	resolvedFiles, err := filesystem.ResolvePaths(changedPaths, s.ignorelist)
+	resolvedFiles, err := util.ResolvePaths(changedPaths, s.ignorelist)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -234,7 +237,6 @@ func (s *Snapshotter) scanFullFilesystem() ([]string, []string, error) {
 
 // removeObsoleteWhiteouts filters deleted files according to their parents delete status.
 func removeObsoleteWhiteouts(deletedFiles map[string]struct{}) (filesToWhiteout []string) {
-
 	for path := range deletedFiles {
 		// Only add the whiteout if the directory for the file still exists.
 		dir := filepath.Dir(path)
@@ -289,7 +291,7 @@ func writeToTar(t util.Tar, files, whiteouts []string) error {
 // Returns true if a parent of the given path has been replaced with anything other than a directory
 func parentPathIncludesNonDirectory(path string) (bool, error) {
 	for _, parentPath := range util.ParentDirectories(path) {
-		lstat, err := os.Lstat(parentPath)
+		lstat, err := filesystem.FS.Lstat(parentPath)
 		if err != nil {
 			return false, err
 		}
@@ -326,7 +328,7 @@ func filesWithLinks(path string) ([]string, error) {
 	if !filepath.IsAbs(link) {
 		link = filepath.Join(filepath.Dir(path), link)
 	}
-	if _, err := os.Stat(link); err != nil {
+	if _, err := filesystem.FS.Stat(link); err != nil {
 		return []string{path}, nil //nolint:nilerr
 	}
 	return []string{path, link}, nil

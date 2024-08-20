@@ -24,11 +24,11 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"os"
 	"os/user"
 	"strconv"
 	"strings"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -50,7 +50,7 @@ func groupIDs(u *user.User) ([]string, error) {
 		return []string{}, nil
 	}
 
-	f, err := os.Open(groupFile)
+	f, err := filesystem.FS.Open(groupFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "open")
 	}

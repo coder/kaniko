@@ -23,6 +23,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 )
 
 // ContainerRuntime is the type for the various container runtime strings.
@@ -57,23 +59,21 @@ const (
 	RuntimeNotFound ContainerRuntime = "not-found"
 )
 
-var (
-	// ContainerRuntimes contains all the container runtimes.
-	ContainerRuntimes = []ContainerRuntime{
-		RuntimeDocker,
-		RuntimeRkt,
-		RuntimeNspawn,
-		RuntimeLXC,
-		RuntimeLXCLibvirt,
-		RuntimeOpenVZ,
-		RuntimeKubernetes,
-		RuntimeGarden,
-		RuntimePodman,
-		RuntimeGVisor,
-		RuntimeFirejail,
-		RuntimeWSL,
-	}
-)
+// ContainerRuntimes contains all the container runtimes.
+var ContainerRuntimes = []ContainerRuntime{
+	RuntimeDocker,
+	RuntimeRkt,
+	RuntimeNspawn,
+	RuntimeLXC,
+	RuntimeLXCLibvirt,
+	RuntimeOpenVZ,
+	RuntimeKubernetes,
+	RuntimeGarden,
+	RuntimePodman,
+	RuntimeGVisor,
+	RuntimeFirejail,
+	RuntimeWSL,
+}
 
 // GetContainerRuntime returns the container runtime the process is running in.
 // If pid is less than one, it returns the runtime for "self".
@@ -189,7 +189,7 @@ func getContainerRuntime(input string) ContainerRuntime {
 }
 
 func osFileExists(file string) bool {
-	if _, err := os.Stat(file); !os.IsNotExist(err) {
+	if _, err := filesystem.FS.Stat(file); !os.IsNotExist(err) {
 		return true
 	}
 	return false
@@ -200,7 +200,7 @@ func readFile(file string) []byte {
 		return nil
 	}
 
-	b, _ := os.ReadFile(file)
+	b, _ := filesystem.ReadFile(file)
 	return b
 }
 

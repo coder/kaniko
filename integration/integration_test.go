@@ -40,6 +40,7 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/api/option"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/pkg/util/bucket"
@@ -104,7 +105,7 @@ func launchTests(m *testing.M) (int, error) {
 		if err != nil {
 			return 1, errors.Wrap(err, "failed to get bucket name from uri")
 		}
-		contextFile, err := os.Open(contextFilePath)
+		contextFile, err := filesystem.FS.Open(contextFilePath)
 		if err != nil {
 			return 1, fmt.Errorf("failed to read file at path %v: %w", contextFilePath, err)
 		}
@@ -113,7 +114,7 @@ func launchTests(m *testing.M) (int, error) {
 			return 1, errors.Wrap(err, "Failed to upload build context")
 		}
 
-		if err = os.Remove(contextFilePath); err != nil {
+		if err = filesystem.FS.Remove(contextFilePath); err != nil {
 			return 1, errors.Wrap(err, fmt.Sprintf("Failed to remove tarball at %s", contextFilePath))
 		}
 
@@ -1035,7 +1036,7 @@ func getLastLayerFiles(image string) ([]string, error) {
 
 func logBenchmarks(benchmark string) error {
 	if b, err := strconv.ParseBool(os.Getenv("BENCHMARK")); err == nil && b {
-		f, err := os.Create(benchmark)
+		f, err := filesystem.FS.Create(benchmark)
 		if err != nil {
 			return err
 		}
@@ -1074,7 +1075,7 @@ func initIntegrationTestConfig() *integrationTestConfig {
 		if err != nil {
 			log.Fatalf("Error getting absolute path for service account: %s\n", c.serviceAccount)
 		}
-		if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		if _, err := filesystem.FS.Stat(absPath); os.IsNotExist(err) {
 			log.Fatalf("Service account does not exist: %s\n", absPath)
 		}
 		c.serviceAccount = absPath

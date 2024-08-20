@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"testing"
 	"text/template"
+
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 )
 
 type K8sConfig struct {
@@ -41,7 +43,7 @@ func TestK8s(t *testing.T) {
 
 	dir := filepath.Join(cwd, "dockerfiles-with-context")
 
-	entries, err := os.ReadDir(dir)
+	entries, err := filesystem.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,11 +75,11 @@ func TestK8s(t *testing.T) {
 			dockerImage := GetDockerImage(config.imageRepo, name)
 			kanikoImage := GetKanikoImage(config.imageRepo, name)
 
-			tmpfile, err := os.CreateTemp("", "k8s-job-*.yaml")
+			tmpfile, err := filesystem.CreateTemp("", "k8s-job-*.yaml")
 			if err != nil {
 				log.Fatal(err)
 			}
-			defer os.Remove(tmpfile.Name()) // clean up
+			defer filesystem.FS.Remove(tmpfile.Name()) // clean up
 			tmpl := template.Must(template.ParseFiles("k8s-job.yaml"))
 			job := K8sConfig{KanikoImage: kanikoImage, Context: testDir, Name: name}
 			if err := tmpl.Execute(tmpfile, job); err != nil {
@@ -86,7 +88,7 @@ func TestK8s(t *testing.T) {
 
 			t.Logf("Testing K8s based Kaniko building of dockerfile %s and push to %s \n",
 				testDir, kanikoImage)
-			content, err := os.ReadFile(tmpfile.Name())
+			content, err := filesystem.ReadFile(tmpfile.Name())
 			if err != nil {
 				log.Fatal(err)
 			}

@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/GoogleContainerTools/kaniko/pkg/util/bucket"
@@ -379,7 +380,7 @@ func (d *DockerFileBuilder) buildCachedImage(config *integrationTestConfig, cach
 
 	benchmarkEnv := "BENCHMARK_FILE=false"
 	if b, err := strconv.ParseBool(os.Getenv("BENCHMARK")); err == nil && b {
-		os.Mkdir("benchmarks", 0o755)
+		filesystem.FS.Mkdir("benchmarks", 0o755)
 		benchmarkEnv = "BENCHMARK_FILE=/workspace/benchmarks/" + dockerfile
 	}
 	kanikoImage := GetVersionedKanikoImage(imageRepo, dockerfile, version)
@@ -470,7 +471,7 @@ func buildKanikoImage(
 	shdUpload bool,
 ) (string, error) {
 	benchmarkEnv := "BENCHMARK_FILE=false"
-	benchmarkDir, err := os.MkdirTemp("", "")
+	benchmarkDir, err := filesystem.MkdirTemp("", "")
 	if err != nil {
 		return "", err
 	}
@@ -480,7 +481,7 @@ func buildKanikoImage(
 			benchmarkFile := path.Join(benchmarkDir, dockerfile)
 			fileName := fmt.Sprintf("run_%s_%s", time.Now().Format("2006-01-02-15:04"), dockerfile)
 			dst := path.Join("benchmarks", fileName)
-			file, err := os.Open(benchmarkFile)
+			file, err := filesystem.FS.Open(benchmarkFile)
 			if err != nil {
 				return "", err
 			}

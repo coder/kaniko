@@ -20,12 +20,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path"
 	"regexp"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
+	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/image/remote"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -73,19 +73,19 @@ func WarmCache(opts *config.WarmerOptions) error {
 
 // Download image in temporary files then move files to final destination
 func warmToFile(cacheDir, img string, opts *config.WarmerOptions) error {
-	f, err := os.CreateTemp(cacheDir, "warmingImage.*")
+	f, err := filesystem.CreateTemp(cacheDir, "warmingImage.*")
 	if err != nil {
 		return err
 	}
 	// defer called in reverse order
-	defer os.Remove(f.Name())
+	defer filesystem.FS.Remove(f.Name())
 	defer f.Close()
 
-	mtfsFile, err := os.CreateTemp(cacheDir, "warmingManifest.*")
+	mtfsFile, err := filesystem.CreateTemp(cacheDir, "warmingManifest.*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(mtfsFile.Name())
+	defer filesystem.FS.Remove(mtfsFile.Name())
 	defer mtfsFile.Close()
 
 	cw := &Warmer{
@@ -108,12 +108,12 @@ func warmToFile(cacheDir, img string, opts *config.WarmerOptions) error {
 	finalCachePath := path.Join(cacheDir, digest.String())
 	finalMfstPath := finalCachePath + ".json"
 
-	err = os.Rename(f.Name(), finalCachePath)
+	err = filesystem.FS.Rename(f.Name(), finalCachePath)
 	if err != nil {
 		return err
 	}
 
-	err = os.Rename(mtfsFile.Name(), finalMfstPath)
+	err = filesystem.FS.Rename(mtfsFile.Name(), finalMfstPath)
 	if err != nil {
 		return errors.Wrap(err, "Failed to rename manifest file")
 	}
@@ -194,7 +194,7 @@ func ParseDockerfile(opts *config.WarmerOptions) ([]string, error) {
 		}
 		d, err = io.ReadAll(response.Body)
 	} else {
-		d, err = os.ReadFile(opts.DockerfilePath)
+		d, err = filesystem.ReadFile(opts.DockerfilePath)
 	}
 
 	if err != nil {
@@ -217,5 +217,4 @@ func ParseDockerfile(opts *config.WarmerOptions) ([]string, error) {
 		baseNames = append(baseNames, resolvedBaseName)
 	}
 	return baseNames, nil
-
 }
