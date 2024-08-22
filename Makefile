@@ -30,7 +30,7 @@ REGISTRY?=gcr.io/kaniko-project
 REPOPATH ?= $(ORG)/$(PROJECT)
 VERSION_PACKAGE = $(REPOPATH)/pkg/version
 
-GO_FILES := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
+GO_FILES := $(shell find . -type f -name '*.go')
 GO_LDFLAGS := '-extldflags "-static"
 GO_LDFLAGS += -X $(VERSION_PACKAGE).version=$(VERSION)
 GO_LDFLAGS += -w -s # Drop debugging symbols.
@@ -41,10 +41,8 @@ WARMER_PACKAGE = $(REPOPATH)/cmd/warmer
 KANIKO_PROJECT = $(REPOPATH)/kaniko
 BUILD_ARG ?=
 
-# Force using Go Modules and always read the dependencies from
-# the `vendor` folder.
+# Force using Go Modules.
 export GO111MODULE = on
-export GOFLAGS = -mod=vendor
 
 
 out/executor: $(GO_FILES)

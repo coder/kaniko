@@ -290,7 +290,7 @@ func addKanikoOptionsFlags() {
 
 // addHiddenFlags marks certain flags as hidden from the executor help text
 func addHiddenFlags(cmd *cobra.Command) {
-	// This flag is added in a vendored directory, hide so that it doesn't come up via --help
+	// This flag is added in a library, hide so that it doesn't come up via --help
 	pflag.CommandLine.MarkHidden("azure-container-registry-config")
 	// Hide this flag as we want to encourage people to use the --context flag instead
 	cmd.PersistentFlags().MarkHidden("bucket")

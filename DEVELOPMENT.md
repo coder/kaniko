@@ -79,7 +79,7 @@ The helper script to install and run lint is placed here at the root of project.
 To fix any `gofmt` issues, you can simply run `gofmt` with `-w` flag like this
 
 ```shell
-find . -name "*.go" | grep -v vendor/ | xargs gofmt -l -s -w
+find . -name "*.go" | xargs gofmt -l -s -w
 ```
 
 ### Integration tests

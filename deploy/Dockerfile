@@ -36,9 +36,9 @@ COPY . .
 # To update the version of any tool installed here, run
 #
 #   go get <tool>@<commit-sha-or-tag>
-#   go mod vendor
+#   go mod tidy
 #
-# Then submit a PR with the changes to `go.mod`, `go.sum`, and `vendor`.
+# Then submit a PR with the changes to `go.mod` and `go.sum`.
 
 # Get GCR credential helper
 RUN go install github.com/GoogleCloudPlatform/docker-credential-gcr/v2
