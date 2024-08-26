@@ -192,9 +192,8 @@ func newCachedFileInfo(hdr *tar.Header) *cachedFileInfo {
 		FileInfo: fi,
 		hdr:      hdr,
 		sys: &syscall.Stat_t{
-			Mode: uint32(fi.Mode()),
-			Uid:  uint32(hdr.Uid),
-			Gid:  uint32(hdr.Gid),
+			Uid: uint32(hdr.Uid),
+			Gid: uint32(hdr.Gid),
 		},
 	}
 }
