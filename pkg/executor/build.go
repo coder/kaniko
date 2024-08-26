@@ -17,10 +17,7 @@ limitations under the License.
 package executor
 
 import (
-	"archive/tar"
 	"fmt"
-	"io"
-	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -1242,25 +1239,6 @@ func extractImageToDependencyDir(name string, image v1.Image) error {
 	}
 	logrus.Debugf("Trying to extract to %s", dependencyDir)
 	_, err := util.GetFSFromImage(dependencyDir, image, util.ExtractFile)
-	return err
-}
-
-func extractImageFilesToStageDir(stage int, image v1.Image, files []string) error {
-	t := timing.Start("Extracting Image Files to Stage Dir")
-	defer timing.DefaultRun.Stop(t)
-	stageDir := filepath.Join(config.KanikoDir, fmt.Sprintf("%d", stage))
-	if err := filesystem.MkdirAll(stageDir, 0o755); err != nil {
-		return err
-	}
-	_, err := util.GetFSFromImage(stageDir, image, func(dest string, hdr *tar.Header, cleanedName string, tr io.Reader) error {
-		for _, f := range files {
-			if ok, err := path.Match(f, "/"+cleanedName); ok && err == nil {
-				logrus.Infof("Extracting %s", cleanedName)
-				return util.ExtractFile(dest, hdr, cleanedName, tr)
-			}
-		}
-		return nil
-	})
 	return err
 }
 
