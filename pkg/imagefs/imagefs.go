@@ -40,25 +40,31 @@ type imageFS struct {
 	vfs.FS
 	image map[string]v1.Image
 	dirs  map[string]*cachedDir
-	files map[string]*cachedFileInfo
+	files map[string]imageFSFile
+}
+
+type imageFSFile interface {
+	fs.File
+	fs.FileInfo
+	fs.DirEntry
 }
 
 func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs.FS, error) {
 	var ifs *imageFS
 
 	// Multiple layers of imageFS might get confusing, enable delayering.
-	if fs, ok := parent.(*imageFS); ok {
-		if _, ok := fs.image[root]; ok {
+	if pfs, ok := parent.(*imageFS); ok {
+		if _, ok := pfs.image[root]; ok {
 			return nil, fmt.Errorf("imagefs: root already exists: %s", root)
 		}
-		fs.image[root] = image
-		ifs = fs
+		pfs.image[root] = image
+		ifs = pfs
 	} else {
 		ifs = &imageFS{
 			FS:    vfs.NewReadOnlyFS(parent),
 			image: map[string]v1.Image{root: image},
 			dirs:  make(map[string]*cachedDir),
-			files: make(map[string]*cachedFileInfo),
+			files: make(map[string]imageFSFile),
 		}
 	}
 
@@ -71,7 +77,7 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 			if ok, err := filepath.Match(f, "/"+cleanedName); ok && err == nil {
 				logrus.Debugf("imagefs: Found cacheable file %q (%s) (%d:%d)", f, dest, hdr.Uid, hdr.Gid)
 
-				f := newCachedFileInfo(hdr)
+				f := newCachedFileInfo(dest, hdr)
 
 				// Hash the file, implementation must match util.CacheHasher.
 				h := md5.New()
@@ -86,9 +92,8 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 				} else if f.Mode()&os.ModeSymlink == os.ModeSymlink {
 					h.Write([]byte(hdr.Linkname))
 				}
-				f.md5sum = h.Sum(nil)
 
-				ifs.files[dest] = f
+				ifs.files[dest] = newCachedFileInfoWithMD5Sum(f, h.Sum(nil))
 
 				return nil
 			}
@@ -177,21 +182,21 @@ type cachedDir struct {
 }
 
 type cachedFileInfo struct {
+	path string
 	fs.FileInfo
-	hdr    *tar.Header
-	sys    interface{}
-	md5sum []byte
+	hdr *tar.Header
+	sys interface{}
 }
 
-// Ensure that cachedFileInfo implements the CacheHasherFileInfoSum interface.
-var _ util.CacheHasherFileInfoSum = &cachedFileInfo{}
-
-func newCachedFileInfo(hdr *tar.Header) *cachedFileInfo {
+func newCachedFileInfo(path string, hdr *tar.Header) *cachedFileInfo {
 	fi := hdr.FileInfo()
 	return &cachedFileInfo{
 		FileInfo: fi,
+		path:     path,
 		hdr:      hdr,
 		sys: &syscall.Stat_t{
+			// NOTE(mafredri): We only set the fields that are used by kaniko.
+			// This is not a complete implementation of syscall.Stat_t.
 			Uid: uint32(hdr.Uid),
 			Gid: uint32(hdr.Gid),
 		},
@@ -199,35 +204,50 @@ func newCachedFileInfo(hdr *tar.Header) *cachedFileInfo {
 }
 
 func (cf *cachedFileInfo) Sys() interface{} {
-	logrus.Debugf("imagefs: Sys cached file %s", cf.Name())
+	logrus.Debugf("imagefs: Sys cached file: %s", cf.path)
 	return cf.sys
 }
 
 func (cf *cachedFileInfo) Stat() (fs.FileInfo, error) {
-	logrus.Debugf("imagefs: Stat cached file %s", cf.Name())
+	logrus.Debugf("imagefs: Stat cached file: %s", cf.path)
 	return cf, nil
 }
 
 func (cf *cachedFileInfo) Read(p []byte) (n int, err error) {
-	panic("imagefs: Read cached file is not allowed")
-}
-
-func (cf *cachedFileInfo) MD5Sum() ([]byte, error) {
-	logrus.Debugf("imagefs: MD5Sum cached file %s", cf.Name())
-	return cf.md5sum, nil
+	return 0, fmt.Errorf("imagefs: Read cached file is not allowed: %s", cf.path)
 }
 
 func (cf *cachedFileInfo) Type() fs.FileMode {
-	logrus.Debugf("imagefs: Type cached file %s", cf.Name())
+	logrus.Debugf("imagefs: Type cached file: %s", cf.path)
 	return cf.Mode()
 }
 
 func (cf *cachedFileInfo) Info() (fs.FileInfo, error) {
-	logrus.Debugf("imagefs: Info cached file %s", cf.Name())
+	logrus.Debugf("imagefs: Info cached file: %s", cf.path)
 	return cf, nil
 }
 
 func (cf *cachedFileInfo) Close() error {
-	logrus.Debugf("imagefs: Close cached file %s", cf.Name())
+	logrus.Debugf("imagefs: Close cached file: %s", cf.path)
 	return nil
+}
+
+type cachedFileInfoWithMD5Sum struct {
+	*cachedFileInfo
+	md5sum []byte
+}
+
+func newCachedFileInfoWithMD5Sum(fi *cachedFileInfo, md5sum []byte) *cachedFileInfoWithMD5Sum {
+	return &cachedFileInfoWithMD5Sum{
+		cachedFileInfo: fi,
+		md5sum:         md5sum,
+	}
+}
+
+// Ensure that cachedFileInfo implements the CacheHasherFileInfoSum interface.
+var _ util.CacheHasherFileInfoSum = &cachedFileInfoWithMD5Sum{}
+
+func (cf *cachedFileInfoWithMD5Sum) MD5Sum() ([]byte, error) {
+	logrus.Debugf("imagefs: MD5Sum cached file: %s", cf.path)
+	return cf.md5sum, nil
 }
