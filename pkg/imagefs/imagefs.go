@@ -191,10 +191,10 @@ type cachedDir struct {
 }
 
 type cachedFileInfo struct {
-	path string
 	fs.FileInfo
-	hdr *tar.Header
-	sys interface{}
+	path string
+	hdr  *tar.Header
+	sys  *syscall.Stat_t
 }
 
 func newCachedFileInfo(path string, hdr *tar.Header) *cachedFileInfo {
