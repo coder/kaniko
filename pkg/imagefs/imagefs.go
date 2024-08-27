@@ -77,23 +77,13 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 			if ok, err := filepath.Match(f, "/"+cleanedName); ok && err == nil {
 				logrus.Debugf("imagefs: Found cacheable file %q (%s) (%d:%d)", f, dest, hdr.Uid, hdr.Gid)
 
-				f := newCachedFileInfo(dest, hdr)
-
-				// Hash the file, implementation must match util.CacheHasher.
-				h := md5.New()
-				h.Write([]byte(f.Mode().String()))
-				h.Write([]byte(strconv.FormatUint(uint64(hdr.Uid), 36)))
-				h.Write([]byte(","))
-				h.Write([]byte(strconv.FormatUint(uint64(hdr.Gid), 36)))
-				if f.Mode().IsRegular() {
-					if _, err := io.Copy(h, tr); err != nil {
-						return err
-					}
-				} else if f.Mode()&os.ModeSymlink == os.ModeSymlink {
-					h.Write([]byte(hdr.Linkname))
+				sum, err := hashFile(hdr, tr)
+				if err != nil {
+					return errors.Wrap(err, "imagefs: hash file failed")
 				}
 
-				ifs.files[dest] = newCachedFileInfoWithMD5Sum(f, h.Sum(nil))
+				f := newCachedFileInfo(dest, hdr)
+				ifs.files[dest] = newCachedFileInfoWithMD5Sum(f, sum)
 
 				return nil
 			}
@@ -102,13 +92,13 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 			if cleanedName == "/" || strings.HasPrefix(f, "/"+cleanedName+"/") {
 				logrus.Debugf("imagefs: Found cacheable file parent %q (%s)", f, dest)
 
-				ifs.files[dest] = newCachedFileInfo(hdr)
+				ifs.files[dest] = newCachedFileInfo(dest, hdr)
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to walk image")
+		return nil, errors.Wrap(err, "imagefs: walk image failed")
 	}
 
 	for dir, d := range ifs.files {
@@ -250,4 +240,23 @@ var _ util.CacheHasherFileInfoSum = &cachedFileInfoWithMD5Sum{}
 func (cf *cachedFileInfoWithMD5Sum) MD5Sum() ([]byte, error) {
 	logrus.Debugf("imagefs: MD5Sum cached file: %s", cf.path)
 	return cf.md5sum, nil
+}
+
+// hashFile hashes the gievn file, implementation must match util.CacheHasher.
+func hashFile(hdr *tar.Header, r io.Reader) ([]byte, error) {
+	fi := hdr.FileInfo()
+
+	h := md5.New()
+	h.Write([]byte(fi.Mode().String()))
+	h.Write([]byte(strconv.FormatUint(uint64(fi.Sys().(*syscall.Stat_t).Uid), 36)))
+	h.Write([]byte(","))
+	h.Write([]byte(strconv.FormatUint(uint64(fi.Sys().(*syscall.Stat_t).Gid), 36)))
+	if fi.Mode().IsRegular() {
+		if _, err := io.Copy(h, r); err != nil {
+			return nil, errors.Wrap(err, "imagefs: copy file content failed")
+		}
+	} else if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
+		h.Write([]byte(hdr.Linkname))
+	}
+	return h.Sum(nil), nil
 }

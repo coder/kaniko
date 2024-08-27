@@ -735,6 +735,8 @@ func (s *stageBuilder) saveLayerToImage(layer v1.Layer, createdBy string) error 
 func CalculateDependencies(stages []config.KanikoStage, opts *config.KanikoOptions, stageNameToIdx map[string]string) (map[int][]string, map[string][]string, error) {
 	images := []v1.Image{}
 	stageDepGraph := map[int][]string{}
+	// imageDepGraph tracks stage dependencies from non-stage
+	// images for use by imagefs to avoid extraction.
 	imageDepGraph := map[string][]string{}
 	for _, s := range stages {
 		ba := dockerfile.NewBuildArgs(opts.BuildArgs)
@@ -828,7 +830,7 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 
 	// Some stages may refer to other random images, not previous stages
 	if err := fetchExtraStages(kanikoStages, opts, false, imageDependencies); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fetch  extra stages failed")
 	}
 
 	var args *dockerfile.BuildArgs
@@ -972,7 +974,7 @@ func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
 	logrus.Infof("Built image deps: %v", imageDependencies)
 	// Some stages may refer to other random images, not previous stages
 	if err := fetchExtraStages(kanikoStages, opts, true, imageDependencies); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fetch  extra stages failed")
 	}
 
 	var args *dockerfile.BuildArgs
