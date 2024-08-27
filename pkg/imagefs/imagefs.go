@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/pkg/errors"
@@ -179,17 +180,11 @@ type cachedFileInfo struct {
 }
 
 func newCachedFileInfo(path string, hdr *tar.Header) *cachedFileInfo {
-	fi := hdr.FileInfo()
 	return &cachedFileInfo{
-		FileInfo: fi,
+		FileInfo: hdr.FileInfo(),
 		path:     path,
 		hdr:      hdr,
-		sys: &syscall.Stat_t{
-			// NOTE(mafredri): We only set the fields that are used by kaniko.
-			// This is not a complete implementation of syscall.Stat_t.
-			Uid: uint32(hdr.Uid),
-			Gid: uint32(hdr.Gid),
-		},
+		sys:      tarHeaderToStat_t(hdr),
 	}
 }
 
@@ -240,6 +235,24 @@ var _ util.CacheHasherFileInfoSum = &cachedFileInfoWithMD5Sum{}
 func (cf *cachedFileInfoWithMD5Sum) MD5Sum() ([]byte, error) {
 	logrus.Debugf("imagefs: MD5Sum cached file: %s", cf.path)
 	return cf.md5sum, nil
+}
+
+// tarHeaderToStat_t converts a tar.Header to a syscall.Stat_t.
+func tarHeaderToStat_t(hdr *tar.Header) *syscall.Stat_t {
+	fi := hdr.FileInfo()
+	return &syscall.Stat_t{
+		Mode: uint32(fi.Mode()),
+		Uid:  uint32(hdr.Uid),
+		Gid:  uint32(hdr.Gid),
+		Size: fi.Size(),
+		Atim: timespec(hdr.AccessTime),
+		Ctim: timespec(hdr.ChangeTime),
+		Mtim: timespec(fi.ModTime()),
+	}
+}
+
+func timespec(t time.Time) syscall.Timespec {
+	return syscall.Timespec{Sec: t.Unix(), Nsec: int64(t.Nanosecond())}
 }
 
 // hashFile hashes the gievn file, implementation must match util.CacheHasher.
