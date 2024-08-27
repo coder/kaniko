@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -39,6 +40,8 @@ import (
 
 type imageFS struct {
 	vfs.FS
+
+	mu    sync.RWMutex // Protects following.
 	image map[string]v1.Image
 	dirs  map[string]*cachedDir
 	files map[string]imageFSFile
@@ -55,6 +58,9 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 
 	// Multiple layers of imageFS might get confusing, enable delayering.
 	if pfs, ok := parent.(*imageFS); ok {
+		pfs.mu.Lock()
+		defer pfs.mu.Unlock()
+
 		if _, ok := pfs.image[root]; ok {
 			return nil, fmt.Errorf("imagefs: root already exists: %s", root)
 		}
@@ -122,6 +128,9 @@ func (ifs *imageFS) Open(name string) (fs.File, error) {
 	if f, err := ifs.FS.Open(name); err == nil {
 		return f, nil
 	}
+
+	ifs.mu.RLock()
+	defer ifs.mu.RUnlock()
 	if ifs.files[name] != nil {
 		logrus.Debugf("imagefs: Open cached file %s", name)
 		return ifs.files[name], nil
@@ -134,6 +143,9 @@ func (ifs *imageFS) Lstat(name string) (fs.FileInfo, error) {
 	if fi, err := ifs.FS.Lstat(name); err == nil {
 		return fi, nil
 	}
+
+	ifs.mu.RLock()
+	defer ifs.mu.RUnlock()
 	if ifs.files[name] != nil {
 		logrus.Debugf("imagefs: Lstat cached file %s", name)
 		return ifs.files[name], nil
@@ -146,6 +158,9 @@ func (ifs *imageFS) Stat(name string) (fs.FileInfo, error) {
 	if fi, err := ifs.FS.Stat(name); err == nil {
 		return fi, nil
 	}
+
+	ifs.mu.RLock()
+	defer ifs.mu.RUnlock()
 	if ifs.files[name] != nil {
 		logrus.Debugf("imagefs: Stat cached file %s", name)
 		return ifs.files[name], nil
@@ -158,6 +173,9 @@ func (ifs *imageFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	if de, err := ifs.FS.ReadDir(name); err == nil {
 		return de, nil
 	}
+
+	ifs.mu.RLock()
+	defer ifs.mu.RUnlock()
 	for dir, d := range ifs.dirs {
 		if ok, err := filepath.Match(name, dir); ok && err == nil {
 			logrus.Debugf("imagefs: Reading cached directory %s", name)
