@@ -279,9 +279,9 @@ func hashFile(hdr *tar.Header, r io.Reader) ([]byte, error) {
 
 	h := md5.New()
 	h.Write([]byte(fi.Mode().String()))
-	h.Write([]byte(strconv.FormatUint(uint64(fi.Sys().(*syscall.Stat_t).Uid), 36)))
+	h.Write([]byte(strconv.FormatUint(uint64(hdr.Uid), 36)))
 	h.Write([]byte(","))
-	h.Write([]byte(strconv.FormatUint(uint64(fi.Sys().(*syscall.Stat_t).Gid), 36)))
+	h.Write([]byte(strconv.FormatUint(uint64(hdr.Gid), 36)))
 	if fi.Mode().IsRegular() {
 		if _, err := io.Copy(h, r); err != nil {
 			return nil, errors.Wrap(err, "imagefs: copy file content failed")
