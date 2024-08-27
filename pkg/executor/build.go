@@ -830,7 +830,7 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 
 	// Some stages may refer to other random images, not previous stages
 	if err := fetchExtraStages(kanikoStages, opts, false, imageDependencies); err != nil {
-		return nil, errors.Wrap(err, "fetch  extra stages failed")
+		return nil, errors.Wrap(err, "fetch extra stages failed")
 	}
 
 	var args *dockerfile.BuildArgs
@@ -974,7 +974,7 @@ func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
 	logrus.Infof("Built image deps: %v", imageDependencies)
 	// Some stages may refer to other random images, not previous stages
 	if err := fetchExtraStages(kanikoStages, opts, true, imageDependencies); err != nil {
-		return nil, errors.Wrap(err, "fetch  extra stages failed")
+		return nil, errors.Wrap(err, "fetch extra stages failed")
 	}
 
 	var args *dockerfile.BuildArgs
