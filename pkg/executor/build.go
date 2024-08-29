@@ -44,6 +44,7 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	image_util "github.com/GoogleContainerTools/kaniko/pkg/image"
 	"github.com/GoogleContainerTools/kaniko/pkg/image/remote"
+	"github.com/GoogleContainerTools/kaniko/pkg/imagefs"
 	"github.com/GoogleContainerTools/kaniko/pkg/snapshot"
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
@@ -731,9 +732,12 @@ func (s *stageBuilder) saveLayerToImage(layer v1.Layer, createdBy string) error 
 	return err
 }
 
-func CalculateDependencies(stages []config.KanikoStage, opts *config.KanikoOptions, stageNameToIdx map[string]string) (map[int][]string, error) {
+func CalculateDependencies(stages []config.KanikoStage, opts *config.KanikoOptions, stageNameToIdx map[string]string) (map[int][]string, map[string][]string, error) {
 	images := []v1.Image{}
-	depGraph := map[int][]string{}
+	stageDepGraph := map[int][]string{}
+	// imageDepGraph tracks stage dependencies from non-stage
+	// images for use by imagefs to avoid extraction.
+	imageDepGraph := map[string][]string{}
 	for _, s := range stages {
 		ba := dockerfile.NewBuildArgs(opts.BuildArgs)
 		ba.AddMetaArgs(s.MetaArgs)
@@ -746,12 +750,12 @@ func CalculateDependencies(stages []config.KanikoStage, opts *config.KanikoOptio
 		} else {
 			image, err = image_util.RetrieveSourceImage(s, opts)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		cfg, err := initializeConfig(image, opts)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		cmds, err := dockerfile.GetOnBuildInstructions(&cfg.Config, stageNameToIdx)
@@ -761,29 +765,30 @@ func CalculateDependencies(stages []config.KanikoStage, opts *config.KanikoOptio
 			switch cmd := c.(type) {
 			case *instructions.CopyCommand:
 				if cmd.From != "" {
-					i, err := strconv.Atoi(cmd.From)
-					if err != nil {
-						continue
-					}
 					resolved, err := util.ResolveEnvironmentReplacementList(cmd.SourcesAndDest.SourcePaths, ba.ReplacementEnvs(cfg.Config.Env), true)
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
-					depGraph[i] = append(depGraph[i], resolved...)
+					i, err := strconv.Atoi(cmd.From)
+					if err == nil {
+						stageDepGraph[i] = append(stageDepGraph[i], resolved...)
+					} else {
+						imageDepGraph[cmd.From] = append(imageDepGraph[cmd.From], resolved...)
+					}
 				}
 			case *instructions.EnvCommand:
 				if err := util.UpdateConfigEnv(cmd.Env, &cfg.Config, ba.ReplacementEnvs(cfg.Config.Env)); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				image, err = mutate.Config(image, cfg.Config)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			case *instructions.ArgCommand:
 				for _, arg := range cmd.Args {
 					k, v, err := commands.ParseArg(arg.Key, arg.Value, cfg.Config.Env, ba)
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 					ba.AddArg(k, v)
 				}
@@ -791,7 +796,7 @@ func CalculateDependencies(stages []config.KanikoStage, opts *config.KanikoOptio
 		}
 		images = append(images, image)
 	}
-	return depGraph, nil
+	return stageDepGraph, imageDepGraph, nil
 }
 
 // DoBuild executes building the Dockerfile
@@ -816,15 +821,17 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 		return nil, err
 	}
 
-	// Some stages may refer to other random images, not previous stages
-	if err := fetchExtraStages(kanikoStages, opts); err != nil {
-		return nil, err
-	}
-	crossStageDependencies, err := CalculateDependencies(kanikoStages, opts, stageNameToIdx)
+	crossStageDependencies, imageDependencies, err := CalculateDependencies(kanikoStages, opts, stageNameToIdx)
 	if err != nil {
 		return nil, err
 	}
 	logrus.Infof("Built cross stage deps: %v", crossStageDependencies)
+	logrus.Infof("Built image deps: %v", imageDependencies)
+
+	// Some stages may refer to other random images, not previous stages
+	if err := fetchExtraStages(kanikoStages, opts, false, imageDependencies); err != nil {
+		return nil, errors.Wrap(err, "fetch extra stages failed")
+	}
 
 	var args *dockerfile.BuildArgs
 
@@ -940,6 +947,12 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 // cache without modifying the filesystem.
 // Returns an error if any layers are missing from build cache.
 func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
+	// Restore the filesystem after we're done since we're using imagefs.
+	origFS := filesystem.FS
+	defer func() {
+		filesystem.SetFS(origFS)
+	}()
+
 	digestToCacheKey := make(map[string]string)
 	stageIdxToDigest := make(map[string]string)
 
@@ -959,15 +972,16 @@ func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
 		return nil, err
 	}
 
-	// Some stages may refer to other random images, not previous stages
-	if err := fetchExtraStages(kanikoStages, opts); err != nil {
-		return nil, err
-	}
-	crossStageDependencies, err := CalculateDependencies(kanikoStages, opts, stageNameToIdx)
+	crossStageDependencies, imageDependencies, err := CalculateDependencies(kanikoStages, opts, stageNameToIdx)
 	if err != nil {
 		return nil, err
 	}
 	logrus.Infof("Built cross stage deps: %v", crossStageDependencies)
+	logrus.Infof("Built image deps: %v", imageDependencies)
+	// Some stages may refer to other random images, not previous stages
+	if err := fetchExtraStages(kanikoStages, opts, true, imageDependencies); err != nil {
+		return nil, errors.Wrap(err, "fetch extra stages failed")
+	}
 
 	var args *dockerfile.BuildArgs
 
@@ -1020,6 +1034,19 @@ func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
 
 		digestToCacheKey[d.String()] = sb.finalCacheKey
 		logrus.Infof("Mapping digest %v to cachekey %v", d.String(), sb.finalCacheKey)
+
+		if filesToCache, ok := crossStageDependencies[sb.stage.Index]; ok {
+			ifs, err := imagefs.New(
+				filesystem.FS,
+				filepath.Join(config.KanikoDir, strconv.Itoa(sb.stage.Index)),
+				sourceImage,
+				filesToCache,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "could not create image filesystem")
+			}
+			filesystem.SetFS(ifs)
+		}
 
 		if stage.Final {
 			sourceImage, err = mutateCanonicalWithoutLayerEdit(sourceImage)
@@ -1143,7 +1170,7 @@ func deduplicatePaths(paths []string) []string {
 	return deduped
 }
 
-func fetchExtraStages(stages []config.KanikoStage, opts *config.KanikoOptions) error {
+func fetchExtraStages(stages []config.KanikoStage, opts *config.KanikoOptions, cacheProbe bool, imageDependencies map[string][]string) error {
 	t := timing.Start("Fetching Extra Stages")
 	defer timing.DefaultRun.Stop(t)
 
@@ -1177,8 +1204,21 @@ func fetchExtraStages(stages []config.KanikoStage, opts *config.KanikoOptions) e
 			if err := saveStageAsTarball(c.From, sourceImage); err != nil {
 				return err
 			}
-			if err := extractImageToDependencyDir(c.From, sourceImage); err != nil {
-				return err
+			if !cacheProbe {
+				if err := extractImageToDependencyDir(c.From, sourceImage); err != nil {
+					return err
+				}
+			} else {
+				ifs, err := imagefs.New(
+					filesystem.FS,
+					filepath.Join(config.KanikoDir, c.From),
+					sourceImage,
+					imageDependencies[c.From],
+				)
+				if err != nil {
+					return errors.Wrap(err, "could not create image filesystem")
+				}
+				filesystem.SetFS(ifs)
 			}
 		}
 		// Store the name of the current stage in the list with names, if applicable.

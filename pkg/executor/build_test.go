@@ -216,9 +216,10 @@ func TestCalculateDependencies(t *testing.T) {
 		mockInitConfig func(partial.WithConfigFile, *config.KanikoOptions) (*v1.ConfigFile, error)
 	}
 	tests := []struct {
-		name string
-		args args
-		want map[int][]string
+		name      string
+		args      args
+		want      map[int][]string
+		wantImage map[string][]string
 	}{
 		{
 			name: "no deps",
@@ -359,9 +360,27 @@ COPY --from=second /bar /bat
 				1: {"/bar"},
 			},
 		},
+		{
+			name: "dependency from image",
+			args: args{
+				dockerfile: `
+FROM scratch as target
+COPY --from=alpine /etc/alpine-release /etc/alpine-release
+`,
+			},
+			wantImage: map[string][]string{
+				"alpine": {"/etc/alpine-release"},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.want == nil {
+				tt.want = map[int][]string{}
+			}
+			if tt.wantImage == nil {
+				tt.wantImage = map[string][]string{}
+			}
 			if tt.args.mockInitConfig != nil {
 				original := initializeConfig
 				defer func() { initializeConfig = original }()
@@ -385,14 +404,18 @@ COPY --from=second /bar /bat
 			}
 			stageNameToIdx := ResolveCrossStageInstructions(kanikoStages)
 
-			got, err := CalculateDependencies(kanikoStages, opts, stageNameToIdx)
+			got, gotImage, err := CalculateDependencies(kanikoStages, opts, stageNameToIdx)
 			if err != nil {
 				t.Errorf("got error: %s,", err)
 			}
 
 			if !reflect.DeepEqual(got, tt.want) {
 				diff := cmp.Diff(got, tt.want)
-				t.Errorf("CalculateDependencies() = %v, want %v, diff %v", got, tt.want, diff)
+				t.Errorf("CalculateDependencies() crossStageDependencies = %v, want %v, diff %v", got, tt.want, diff)
+			}
+			if !reflect.DeepEqual(gotImage, tt.wantImage) {
+				diff := cmp.Diff(gotImage, tt.wantImage)
+				t.Errorf("CalculateDependencies() imageDependencies = %v, wantImage %v, diff %v", gotImage, tt.wantImage, diff)
 			}
 		})
 	}

@@ -88,6 +88,13 @@ func Hasher() func(string) (string, error) {
 	return hasher
 }
 
+// CacheHasherFileInfoSum is an interface for getting the MD5 sum of a file.
+// This can be implemented by the concrete fs.FileInfo type to avoid reading the
+// file contents.
+type CacheHasherFileInfoSum interface {
+	MD5Sum() ([]byte, error)
+}
+
 // CacheHasher takes into account everything the regular hasher does except for mtime
 func CacheHasher() func(string) (string, error) {
 	hasher := func(p string) (string, error) {
@@ -96,6 +103,15 @@ func CacheHasher() func(string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+
+		if fh, ok := fi.(CacheHasherFileInfoSum); ok {
+			b, err := fh.MD5Sum()
+			if err != nil {
+				return "", err
+			}
+			return hex.EncodeToString(b), nil
+		}
+
 		h.Write([]byte(fi.Mode().String()))
 
 		// Cian: this is a disgusting hack, but it removes the need for the
