@@ -165,8 +165,6 @@ COPY foo/baz.txt copied/
 	})
 
 	t.Run("MultiStage", func(t *testing.T) {
-		t.Skip("TODO: https://github.com/coder/envbuilder/issues/230")
-
 		// Share cache between both builds.
 		regCache := setupCacheRegistry(t)
 
@@ -175,10 +173,12 @@ COPY foo/baz.txt copied/
 			dockerFile := `
 			FROM scratch as first
 			COPY foo/bam.txt copied/
+			COPY foo/bam.link copied/
 			ENV test test
 			
 			From scratch as second
-			COPY --from=first copied/bam.txt output/bam.txt`
+			COPY --from=first copied/bam.txt output/bam.txt
+			COPY --from=first copied/bam.link output/bam.link`
 			err := filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 			testutil.CheckNoError(t, err)
 			opts := &config.KanikoOptions{

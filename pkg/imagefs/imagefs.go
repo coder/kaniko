@@ -77,11 +77,15 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 
 	// Walk the image and cache file info and hash of the requested files.
 	_, err := util.GetFSFromImage(root, image, func(dest string, hdr *tar.Header, cleanedName string, tr io.Reader) error {
+		// Trim prefix for consistent path.
+		cleanedName = strings.TrimPrefix(cleanedName, "/")
+
 		for _, f := range filesToCache {
 			dest := filepath.Join(root, cleanedName)
+			f = strings.TrimPrefix(f, "/")
 
 			// Check if the file matches the requested file.
-			if ok, err := filepath.Match(f, "/"+cleanedName); ok && err == nil {
+			if ok, err := filepath.Match(f, cleanedName); ok && err == nil {
 				logrus.Debugf("imagefs: Found cacheable file %q (%s) (%d:%d)", f, dest, hdr.Uid, hdr.Gid)
 
 				sum, err := hashFile(hdr, tr)
@@ -96,7 +100,7 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 			}
 
 			// Parent directories are needed for lookup.
-			if cleanedName == "/" || strings.HasPrefix(f, "/"+cleanedName+"/") {
+			if cleanedName == "" || strings.HasPrefix(f, cleanedName+"/") {
 				logrus.Debugf("imagefs: Found cacheable file parent %q (%s)", f, dest)
 
 				ifs.files[dest] = newCachedFileInfo(dest, hdr)
