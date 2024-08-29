@@ -947,6 +947,12 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 // cache without modifying the filesystem.
 // Returns an error if any layers are missing from build cache.
 func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
+	// Restore the filesystem after we're done since we're using imagefs.
+	origFS := filesystem.FS
+	defer func() {
+		filesystem.SetFS(origFS)
+	}()
+
 	digestToCacheKey := make(map[string]string)
 	stageIdxToDigest := make(map[string]string)
 
