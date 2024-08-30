@@ -28,7 +28,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/pkg/errors"
@@ -304,10 +303,6 @@ func tarHeaderToStat_t(hdr *tar.Header) *syscall.Stat_t {
 		Ctim: timespec(hdr.ChangeTime),
 		Mtim: timespec(fi.ModTime()),
 	}
-}
-
-func timespec(t time.Time) syscall.Timespec {
-	return syscall.Timespec{Sec: t.Unix(), Nsec: int64(t.Nanosecond())}
 }
 
 // hashFile hashes the gievn file, implementation must match util.CacheHasher.
