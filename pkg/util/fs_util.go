@@ -483,7 +483,7 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 			}
 		}
 		link := filepath.Clean(filepath.Join(dest, hdr.Linkname))
-		if err := os.Link(link, path); err != nil {
+		if err := filesystem.FS.Link(link, path); err != nil {
 			return err
 		}
 

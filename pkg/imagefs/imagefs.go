@@ -54,8 +54,16 @@ type imageFSFile interface {
 }
 
 func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs.FS, error) {
-	var ifs *imageFS
+	if image == nil {
+		return nil, errors.New("imagefs: image cannot be nil")
+	}
 
+	layers, err := image.Layers()
+	if err != nil {
+		return nil, errors.Wrap(err, "imagefs: get layers failed")
+	}
+
+	var ifs *imageFS
 	// Multiple layers of imageFS might get confusing, enable delayering.
 	if pfs, ok := parent.(*imageFS); ok {
 		pfs.mu.Lock()
@@ -75,42 +83,65 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 		}
 	}
 
+	logrus.Debugf("imagefs: Caching files for %s", root)
+
+	// Keep track of directories so we can cache all of their contents.
+	var dirsToCache []string
 	// Walk the image and cache file info and hash of the requested files.
-	_, err := util.GetFSFromImage(root, image, func(dest string, hdr *tar.Header, cleanedName string, tr io.Reader) error {
+	_, err = util.GetFSFromLayers(root, layers, util.ExtractFunc(func(dest string, hdr *tar.Header, cleanedName string, tr io.Reader) error {
 		// Trim prefix for consistent path.
 		cleanedName = strings.TrimPrefix(cleanedName, "/")
+		path := filepath.Join(dest, cleanedName)
+
+		cacheFile := func() error {
+			logrus.Debugf("imagefs: Found cacheable file /%s (path=%s) (%d:%d)", cleanedName, path, hdr.Uid, hdr.Gid)
+
+			cf := newCachedFileInfo(path, hdr)
+			if cf.IsDir() {
+				dirsToCache = append(dirsToCache, cleanedName)
+			}
+
+			sum, err := hashFile(hdr, tr)
+			if err != nil {
+				return errors.Wrap(err, "imagefs: hash file failed")
+			}
+			ifs.files[path] = newCachedFileInfoWithMD5Sum(cf, sum)
+
+			return nil
+		}
+
+		// All files inside a cached directory should be cached as well.
+		for _, dir := range dirsToCache {
+			if strings.HasPrefix(cleanedName, dir+"/") {
+				return cacheFile()
+			}
+		}
 
 		for _, f := range filesToCache {
-			dest := filepath.Join(root, cleanedName)
 			f = strings.TrimPrefix(f, "/")
+			f = strings.TrimSuffix(f, "/")
 
 			// Check if the file matches the requested file.
 			if ok, err := filepath.Match(f, cleanedName); ok && err == nil {
-				logrus.Debugf("imagefs: Found cacheable file %q (%s) (%d:%d)", f, dest, hdr.Uid, hdr.Gid)
-
-				sum, err := hashFile(hdr, tr)
-				if err != nil {
-					return errors.Wrap(err, "imagefs: hash file failed")
-				}
-
-				f := newCachedFileInfo(dest, hdr)
-				ifs.files[dest] = newCachedFileInfoWithMD5Sum(f, sum)
-
-				return nil
+				return cacheFile()
 			}
 
-			// Parent directories are needed for lookup.
+			// Cache parent directories for directory lookups.
 			if cleanedName == "" || strings.HasPrefix(f, cleanedName+"/") {
-				logrus.Debugf("imagefs: Found cacheable file parent %q (%s)", f, dest)
-
-				ifs.files[dest] = newCachedFileInfo(dest, hdr)
+				if _, ok := ifs.files[path]; !ok {
+					logrus.Debugf("imagefs: Found cacheable file parent /%s (file=/%s)", cleanedName, f)
+					ifs.files[path] = newCachedFileInfo(dest, hdr)
+				}
 			}
 		}
+
 		return nil
-	})
+	}))
 	if err != nil {
 		return nil, errors.Wrap(err, "imagefs: walk image failed")
 	}
+
+	logrus.Debugf("imagefs: Creating cached directories for %s", root)
 
 	for dir, d := range ifs.files {
 		if !d.IsDir() {
@@ -123,6 +154,8 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 			}
 		}
 	}
+
+	logrus.Debugf("imagefs: Cached files for %s", root)
 
 	return ifs, nil
 }

@@ -177,8 +177,7 @@ COPY foo/baz.txt copied/
 			ENV test test
 			
 			From scratch as second
-			COPY --from=first copied/bam.txt output/bam.txt
-			COPY --from=first copied/bam.link output/bam.link`
+			COPY --from=first copied/ output/`
 			err := filesystem.WriteFile(filepath.Join(testDir, "workspace", "Dockerfile"), []byte(dockerFile), 0o755)
 			testutil.CheckNoError(t, err)
 			opts := &config.KanikoOptions{
