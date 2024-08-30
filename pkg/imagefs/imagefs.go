@@ -141,6 +141,8 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 		return nil, errors.Wrap(err, "imagefs: walk image failed")
 	}
 
+	logrus.Debugf("imagefs: Creating cached directories for %s", root)
+
 	for dir, d := range ifs.files {
 		if !d.IsDir() {
 			continue
@@ -152,6 +154,8 @@ func New(parent vfs.FS, root string, image v1.Image, filesToCache []string) (vfs
 			}
 		}
 	}
+
+	logrus.Debugf("imagefs: Cached files for %s", root)
 
 	return ifs, nil
 }
