@@ -24,7 +24,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,8 +122,10 @@ func CacheHasher() func(string) (string, error) {
 		// likely that the file will be owned by the UID/GID that is running
 		// envbuilder, which in this case is not guaranteed to be root.
 		// Let's just pretend that it is, cross our fingers, and hope for the best.
-		lyingAboutOwnership := !fi.IsDir() &&
-			strings.HasSuffix(filepath.Clean(filepath.Dir(p)), ".envbuilder.tmp")
+		isRoot := os.Geteuid() == 0
+		//lyingAboutOwnership := !fi.IsDir() &&
+		//strings.HasSuffix(filepath.Clean(filepath.Dir(p)), ".envbuilder.tmp")
+		lyingAboutOwnership := !fi.IsDir() && !isRoot
 		if lyingAboutOwnership {
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
 			h.Write([]byte(","))
