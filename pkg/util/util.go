@@ -25,7 +25,6 @@ import (
 	"math"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -41,7 +40,9 @@ import (
 // is run as a non-root user, we need to pretend that files are owned
 // by root.
 var isRoot = sync.OnceValue(func() bool {
-	return os.Getuid() == 0
+	b := os.Getuid() == 0
+	logrus.Debugf("kaniko running as root: %t", b)
+	return b
 })
 
 // Hasher returns a hash function, used in snapshotting to determine if a file has changed
@@ -120,15 +121,13 @@ func CacheHasher() func(string) (string, error) {
 
 		h.Write([]byte(fi.Mode().String()))
 
-		// Cian: this is a disgusting hack, but it removes the need for the
-		// envbuilder binary to be owned by root when doing a cache probe.
-		// We want to ignore UID and GID changes for the envbuilder binary
-		// specifically. When building and pushing an image using the envbuilder
-		// image, the embedded envbuilder binary will most likely be owned by
-		// root:root. However, when performing a cache probe operation, it is more
-		// likely that the file will be owned by the UID/GID that is running
-		// envbuilder, which in this case is not guaranteed to be root.
-		// Let's just pretend that it is, cross our fingers, and hope for the best.
+		// Cian: this is a disgusting hack. When building and pushing an image
+		// using the envbuilder image, the files in .envbuilder will most likely
+		// be owned by root:root. However, when performing a cache probe operation,
+		// it is almost certain that the UID/GID that is running the cache probe
+		// operation is not root. This means that the cache probe operation will
+		// fail unless we lie about the UID/GID of the files used to build the
+		// image.
 		lyingAboutOwnership := !fi.IsDir() && !isRoot()
 		if lyingAboutOwnership {
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
