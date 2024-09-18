@@ -37,6 +37,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// In order to avoid failing cache probes when a cache probe operation
+// is run as a non-root user, we need to pretend that files are owned
+// by root.
+var isRoot = sync.OnceValue(func() bool {
+	return os.Getuid() == 0
+})
+
 // Hasher returns a hash function, used in snapshotting to determine if a file has changed
 func Hasher() func(string) (string, error) {
 	pool := sync.Pool{
@@ -122,10 +129,7 @@ func CacheHasher() func(string) (string, error) {
 		// likely that the file will be owned by the UID/GID that is running
 		// envbuilder, which in this case is not guaranteed to be root.
 		// Let's just pretend that it is, cross our fingers, and hope for the best.
-		isRoot := os.Geteuid() == 0
-		//lyingAboutOwnership := !fi.IsDir() &&
-		//strings.HasSuffix(filepath.Clean(filepath.Dir(p)), ".envbuilder.tmp")
-		lyingAboutOwnership := !fi.IsDir() && !isRoot
+		lyingAboutOwnership := !fi.IsDir() && !isRoot()
 		if lyingAboutOwnership {
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
 			h.Write([]byte(","))
