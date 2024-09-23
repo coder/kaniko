@@ -36,15 +36,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// In order to avoid failing cache probes when a cache probe operation
-// is run as a non-root user, we need to pretend that files are owned
-// by root.
-var isRoot = sync.OnceValue(func() bool {
-	b := os.Getuid() == 0
-	logrus.Debugf("kaniko running as root: %t", b)
-	return b
-})
-
 // Hasher returns a hash function, used in snapshotting to determine if a file has changed
 func Hasher() func(string) (string, error) {
 	pool := sync.Pool{
@@ -104,6 +95,13 @@ type CacheHasherFileInfoSum interface {
 
 // CacheHasher takes into account everything the regular hasher does except for mtime
 func CacheHasher() func(string) (string, error) {
+	// In order to avoid failing cache probes when a cache probe operation
+	// is run as a non-root user, we need to pretend that files are owned
+	// by root.
+	isRoot := os.Getuid() == 0
+	if isRoot {
+		logrus.Debugf("kaniko running as root: %t", isRoot)
+	}
 	hasher := func(p string) (string, error) {
 		h := md5.New()
 		fi, err := filesystem.FS.Lstat(p)
@@ -128,7 +126,7 @@ func CacheHasher() func(string) (string, error) {
 		// operation is not root. This means that the cache probe operation will
 		// fail unless we lie about the UID/GID of the files used to build the
 		// image.
-		lyingAboutOwnership := !fi.IsDir() && !isRoot()
+		lyingAboutOwnership := !fi.IsDir() && !isRoot
 		if lyingAboutOwnership {
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
 			h.Write([]byte(","))
