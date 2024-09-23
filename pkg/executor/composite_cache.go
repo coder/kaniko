@@ -55,7 +55,7 @@ func (s *CompositeCache) Hash() (string, error) {
 	return util.SHA256(strings.NewReader(s.Key()))
 }
 
-func (s *CompositeCache) AddPath(p string, context util.FileContext) error {
+func (s *CompositeCache) AddPath(ignoreOwnerAndGroup bool, p string, context util.FileContext) error {
 	sha := sha256.New()
 	fi, err := filesystem.FS.Lstat(p)
 	if err != nil {
@@ -63,7 +63,7 @@ func (s *CompositeCache) AddPath(p string, context util.FileContext) error {
 	}
 
 	if fi.Mode().IsDir() {
-		empty, k, err := hashDir(p, context)
+		empty, k, err := hashDir(ignoreOwnerAndGroup, p, context)
 		if err != nil {
 			return err
 		}
@@ -79,7 +79,7 @@ func (s *CompositeCache) AddPath(p string, context util.FileContext) error {
 	if context.ExcludesFile(p) {
 		return nil
 	}
-	fh, err := util.CacheHasher()(p)
+	fh, err := util.CacheHasher(ignoreOwnerAndGroup)(p)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (s *CompositeCache) AddPath(p string, context util.FileContext) error {
 }
 
 // HashDir returns a hash of the directory.
-func hashDir(p string, context util.FileContext) (bool, string, error) {
+func hashDir(ignoreOwnerAndGroup bool, p string, context util.FileContext) (bool, string, error) {
 	sha := sha256.New()
 	empty := true
 	if err := filesystem.Walk(p, func(path string, fi os.FileInfo, err error) error {
@@ -104,7 +104,7 @@ func hashDir(p string, context util.FileContext) (bool, string, error) {
 			return nil
 		}
 
-		fileHash, err := util.CacheHasher()(path)
+		fileHash, err := util.CacheHasher(ignoreOwnerAndGroup)(path)
 		if err != nil {
 			return err
 		}
