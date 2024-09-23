@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -165,6 +166,9 @@ COPY foo/baz.txt copied/
 	})
 
 	t.Run("MultiStage", func(t *testing.T) {
+		if os.Getuid() != 0 {
+			t.Skip("this test fails because DoBuild is not running as the root user")
+		}
 		// Share cache between both builds.
 		regCache := setupCacheRegistry(t)
 
@@ -218,9 +222,13 @@ COPY foo/baz.txt copied/
 		opts, fn = prepare()
 		defer fn()
 		image2, err := DoCacheProbe(opts)
-		testutil.CheckNoError(t, err)
+		if err != nil {
+			t.Fatalf("cache probe failed: %+v", err)
+		}
 		digest2, err := image2.Digest()
-		testutil.CheckNoError(t, err)
+		if err != nil {
+			t.Fatalf("digest failed: %+v", err)
+		}
 
 		if digest1.String() != digest2.String() {
 			t.Errorf("expected %s, got %s", digest1.String(), digest2.String())
