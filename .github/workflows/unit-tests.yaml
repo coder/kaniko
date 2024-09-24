@@ -12,12 +12,11 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    container:
-      image: golang:1.22
-      env:
-        GOFLAGS: -buildvcs-false
     steps:
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v4.01
+        with:
+          go-version: "1.22"
       - uses: actions/checkout@b0e28b5ac45a892f91e7d036f8200cf5ed489415 # v3
-      - name: Set ownership
-        run: chown -R $(id -u):$(id -g) $PWD
-      - run: make test
+      # Some unit tests need to be run as root to function correctly as they
+      # may attempt to run `chown`.
+      - run: sudo make test
