@@ -13,8 +13,6 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v4.01
-      with:
-        go-version: '1.22'
     - uses: actions/checkout@b0e28b5ac45a892f91e7d036f8200cf5ed489415 # v3
-    - run: make test
+    - run: docker run -it --rm -v $PWD:/src -e GOFLAGS=-buildvcs-false --workdir
+    /src golang:1.22 make test
