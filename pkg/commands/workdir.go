@@ -65,7 +65,7 @@ func (w *WorkdirCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile
 
 		if config.User != "" {
 			logrus.Debugf("Fetching uid and gid for USER '%s'", config.User)
-			uid, gid, err = util.GetUserGroup(config.User, replacementEnvs)
+			uid, gid, err = util.GetUserGroup(config.User, replacementEnvs, "")
 			if err != nil {
 				return errors.Wrapf(err, "identifying uid and gid for user %s", config.User)
 			}
