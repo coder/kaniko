@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,6 +35,9 @@ import (
 )
 
 func TestDoCacheProbe(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Test setup requires root privileges as it attempts to chown")
+	}
 	t.Run("Empty", func(t *testing.T) {
 		testDir, fn := setupCacheProbeTests(t)
 		defer fn()

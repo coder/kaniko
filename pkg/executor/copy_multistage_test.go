@@ -48,6 +48,9 @@ func readDirectory(dirName string) ([]fs.FileInfo, error) {
 }
 
 func TestCopyCommand_Multistage(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Test requires root privileges as it attempts to chown")
+	}
 	t.Run("copy a file across multistage", func(t *testing.T) {
 		testDir, fn := setupMultistageTests(t)
 		defer fn()

@@ -123,6 +123,9 @@ func setupAddTest(t *testing.T) string {
 }
 
 func Test_AddCommand(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Test requires root privileges as it attempts to chown")
+	}
 	tempDir := setupAddTest(t)
 
 	fileContext := util.FileContext{Root: tempDir}
