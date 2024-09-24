@@ -227,16 +227,18 @@ func (s *stageBuilder) populateCompositeKey(command commands.DockerCommand, file
 		}
 	}
 
-	ignoreOwnerAndGroup := false
+	var addPathOptions []AddPathOption
 	if f, ok := command.(interface{ From() string }); ok {
-		ignoreOwnerAndGroup = f.From() == ""
+		if f.From() == "" {
+			addPathOptions = append(addPathOptions, IgnoreOwnerAndGroup())
+		}
 	}
 
 	// Add the next command to the cache key.
 	compositeKey.AddKey(command.String())
 
 	for _, f := range files {
-		if err := compositeKey.AddPath(ignoreOwnerAndGroup, f, s.fileContext); err != nil {
+		if err := compositeKey.AddPath(f, s.fileContext, addPathOptions...); err != nil {
 			return compositeKey, err
 		}
 	}
