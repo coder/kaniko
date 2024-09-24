@@ -2,9 +2,9 @@ name: Unit tests
 
 on:
   push:
-    branches: ['main']
+    branches: ["main"]
   pull_request:
-    branches: ['main']
+    branches: ["main"]
 
 permissions:
   contents: read
@@ -13,6 +13,6 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@b0e28b5ac45a892f91e7d036f8200cf5ed489415 # v3
-    - run: |
-    docker run -it --rm -v $PWD:/src -e GOFLAGS=-buildvcs-false --workdir /src golang:1.22 make test
+      - uses: actions/checkout@b0e28b5ac45a892f91e7d036f8200cf5ed489415 # v3
+      - run: |
+          docker run -it --rm -v $PWD:/src -e GOFLAGS=-buildvcs-false --workdir /src golang:1.22 make test
