@@ -18,4 +18,6 @@ jobs:
         GOFLAGS: -buildvcs-false
     steps:
       - uses: actions/checkout@b0e28b5ac45a892f91e7d036f8200cf5ed489415 # v3
+      - name: Set ownership
+        run: chown -R $(id -u):$(id -g) $PWD
       - run: make test
