@@ -86,10 +86,11 @@ type stageBuilder struct {
 	snapshotter      snapShotter
 	layerCache       cache.LayerCache
 	pushLayerToCache cachePusher
+	isCacheProbe     bool
 }
 
 // newStageBuilder returns a new type stageBuilder which contains all the information required to build the stage
-func newStageBuilder(args *dockerfile.BuildArgs, opts *config.KanikoOptions, stage config.KanikoStage, crossStageDeps map[int][]string, dcm map[string]string, sid map[string]string, stageNameToIdx map[string]string, fileContext util.FileContext) (*stageBuilder, error) {
+func newStageBuilder(args *dockerfile.BuildArgs, opts *config.KanikoOptions, stage config.KanikoStage, crossStageDeps map[int][]string, dcm map[string]string, sid map[string]string, stageNameToIdx map[string]string, fileContext util.FileContext, isCacheProbe bool) (*stageBuilder, error) {
 	sourceImage, err := image_util.RetrieveSourceImage(stage, opts)
 	if err != nil {
 		return nil, err
@@ -138,6 +139,7 @@ func newStageBuilder(args *dockerfile.BuildArgs, opts *config.KanikoOptions, sta
 		stageIdxToDigest: sid,
 		layerCache:       newLayerCache(opts),
 		pushLayerToCache: pushLayerToCache,
+		isCacheProbe:     isCacheProbe,
 	}
 
 	for _, cmd := range s.stage.Commands {
@@ -229,7 +231,7 @@ func (s *stageBuilder) populateCompositeKey(command commands.DockerCommand, file
 
 	var addPathOptions []AddPathOption
 	if f, ok := command.(interface{ From() string }); ok {
-		if f.From() == "" {
+		if f.From() == "" && s.isCacheProbe {
 			addPathOptions = append(addPathOptions, IgnoreOwnerAndGroup())
 		}
 	}
@@ -849,7 +851,8 @@ func DoBuild(opts *config.KanikoOptions) (v1.Image, error) {
 			digestToCacheKey,
 			stageIdxToDigest,
 			stageNameToIdx,
-			fileContext)
+			fileContext,
+			false)
 
 		logrus.Infof("Building stage '%v' [idx: '%v', base-idx: '%v']",
 			stage.BaseName, stage.Index, stage.BaseImageIndex)
@@ -999,7 +1002,8 @@ func DoCacheProbe(opts *config.KanikoOptions) (v1.Image, error) {
 			digestToCacheKey,
 			stageIdxToDigest,
 			stageNameToIdx,
-			fileContext)
+			fileContext,
+			true)
 		if err != nil {
 			return nil, err
 		}
