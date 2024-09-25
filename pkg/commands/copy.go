@@ -59,7 +59,7 @@ func (c *CopyCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bu
 	// username, groupname, or UID/GID combination to request specific ownership
 	// of the copied content.
 	chownStr := c.cmd.Chown
-	if c.From() == "" {
+	if chownStr == "" && c.From() == "" {
 		chownStr = "0:0"
 	}
 	uid, gid, err := getUserGroup(chownStr, replacementEnvs)
