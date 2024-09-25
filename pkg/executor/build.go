@@ -227,10 +227,9 @@ func (s *stageBuilder) populateCompositeKey(command commands.DockerCommand, file
 		}
 	}
 
-	var addPathOptions []AddPathOption
 	if f, ok := command.(interface{ From() string }); ok {
 		if f.From() == "" {
-			addPathOptions = append(addPathOptions, IgnoreOwnerAndGroup())
+			s.fileContext.IgnoreOwnerAndGroup = true
 		}
 	}
 
@@ -238,7 +237,7 @@ func (s *stageBuilder) populateCompositeKey(command commands.DockerCommand, file
 	compositeKey.AddKey(command.String())
 
 	for _, f := range files {
-		if err := compositeKey.AddPath(f, s.fileContext, addPathOptions...); err != nil {
+		if err := compositeKey.AddPath(f, s.fileContext); err != nil {
 			return compositeKey, err
 		}
 	}

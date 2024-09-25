@@ -100,8 +100,9 @@ var skipKanikoDir = func() otiai10Cpy.Options {
 }
 
 type FileContext struct {
-	Root          string
-	ExcludedFiles []string
+	Root                string
+	ExcludedFiles       []string
+	IgnoreOwnerAndGroup bool
 }
 
 type ExtractFunction func(string, *tar.Header, string, io.Reader) error

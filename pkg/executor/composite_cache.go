@@ -55,23 +55,7 @@ func (s *CompositeCache) Hash() (string, error) {
 	return util.SHA256(strings.NewReader(s.Key()))
 }
 
-type addPathOptions struct {
-	ignoreOwnerAndGroup bool
-}
-
-type AddPathOption func(*addPathOptions)
-
-func IgnoreOwnerAndGroup() func(*addPathOptions) {
-	return func(o *addPathOptions) {
-		o.ignoreOwnerAndGroup = true
-	}
-}
-
-func (s *CompositeCache) AddPath(p string, context util.FileContext, fopts ...AddPathOption) error {
-	var opts addPathOptions
-	for _, f := range fopts {
-		f(&opts)
-	}
+func (s *CompositeCache) AddPath(p string, context util.FileContext) error {
 	sha := sha256.New()
 	fi, err := filesystem.FS.Lstat(p)
 	if err != nil {
@@ -79,7 +63,7 @@ func (s *CompositeCache) AddPath(p string, context util.FileContext, fopts ...Ad
 	}
 
 	if fi.Mode().IsDir() {
-		empty, k, err := hashDir(opts.ignoreOwnerAndGroup, p, context)
+		empty, k, err := hashDir(p, context)
 		if err != nil {
 			return err
 		}
@@ -95,7 +79,7 @@ func (s *CompositeCache) AddPath(p string, context util.FileContext, fopts ...Ad
 	if context.ExcludesFile(p) {
 		return nil
 	}
-	fh, err := util.CacheHasher(opts.ignoreOwnerAndGroup)(p)
+	fh, err := util.CacheHasher(context.IgnoreOwnerAndGroup)(p)
 	if err != nil {
 		return err
 	}
@@ -108,7 +92,7 @@ func (s *CompositeCache) AddPath(p string, context util.FileContext, fopts ...Ad
 }
 
 // HashDir returns a hash of the directory.
-func hashDir(ignoreOwnerAndGroup bool, p string, context util.FileContext) (bool, string, error) {
+func hashDir(p string, context util.FileContext) (bool, string, error) {
 	sha := sha256.New()
 	empty := true
 	if err := filesystem.Walk(p, func(path string, fi os.FileInfo, err error) error {
@@ -120,7 +104,7 @@ func hashDir(ignoreOwnerAndGroup bool, p string, context util.FileContext) (bool
 			return nil
 		}
 
-		fileHash, err := util.CacheHasher(ignoreOwnerAndGroup)(path)
+		fileHash, err := util.CacheHasher(context.IgnoreOwnerAndGroup)(path)
 		if err != nil {
 			return err
 		}
