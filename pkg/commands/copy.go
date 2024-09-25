@@ -53,7 +53,16 @@ func (c *CopyCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bu
 	}
 
 	replacementEnvs := buildArgs.ReplacementEnvs(config.Env)
-	uid, gid, err := getUserGroup(c.cmd.Chown, replacementEnvs)
+
+	// All files and directories copied from the build context are created with a
+	// UID and GID of 0 unless the optional --chown flag specifies a given
+	// username, groupname, or UID/GID combination to request specific ownership
+	// of the copied content.
+	chownStr := c.cmd.Chown
+	if chownStr == "" && c.From() == "" {
+		chownStr = "0:0"
+	}
+	uid, gid, err := getUserGroup(chownStr, replacementEnvs)
 	logrus.Debugf("found uid %v and gid %v for chown string %v", uid, gid, c.cmd.Chown)
 	if err != nil {
 		return errors.Wrap(err, "getting user group from chown")

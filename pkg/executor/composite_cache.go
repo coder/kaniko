@@ -79,7 +79,7 @@ func (s *CompositeCache) AddPath(p string, context util.FileContext) error {
 	if context.ExcludesFile(p) {
 		return nil
 	}
-	fh, err := util.CacheHasher()(p)
+	fh, err := util.CacheHasher(context.IgnoreOwnerAndGroup)(p)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func hashDir(p string, context util.FileContext) (bool, string, error) {
 			return nil
 		}
 
-		fileHash, err := util.CacheHasher()(path)
+		fileHash, err := util.CacheHasher(context.IgnoreOwnerAndGroup)(path)
 		if err != nil {
 			return err
 		}

@@ -227,11 +227,20 @@ func (s *stageBuilder) populateCompositeKey(command commands.DockerCommand, file
 		}
 	}
 
+	// We want to avoid mutating the entire file context for the rest of its
+	// lifetime, just for adding to the cache key. Make a copy.
+	addPathCtx := s.fileContext
+	if f, ok := command.(interface{ From() string }); ok {
+		if f.From() == "" {
+			addPathCtx.IgnoreOwnerAndGroup = true
+		}
+	}
+
 	// Add the next command to the cache key.
 	compositeKey.AddKey(command.String())
 
 	for _, f := range files {
-		if err := compositeKey.AddPath(f, s.fileContext); err != nil {
+		if err := compositeKey.AddPath(f, addPathCtx); err != nil {
 			return compositeKey, err
 		}
 	}

@@ -536,6 +536,7 @@ func TestGetUserGroup(t *testing.T) {
 		description  string
 		chown        string
 		env          []string
+		from         string
 		mockIDGetter func(userStr string, groupStr string) (uint32, uint32, error)
 		// needed, in case uid is a valid number, but group is a name
 		mockGroupIDGetter func(groupStr string) (*user.Group, error)
@@ -571,8 +572,8 @@ func TestGetUserGroup(t *testing.T) {
 			mockIDGetter: func(string, string) (uint32, uint32, error) {
 				return 0, 0, fmt.Errorf("should not be called")
 			},
-			expectedU: -1,
-			expectedG: -1,
+			expectedU: DoNotChangeUID,
+			expectedG: DoNotChangeGID,
 		},
 	}
 	for _, tc := range tests {

@@ -296,6 +296,9 @@ func Test_CachingCopyCommand_ExecuteCommand(t *testing.T) {
 }
 
 func TestCopyExecuteCmd(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Test requires root privileges as it attempts to chown")
+	}
 	tempDir := setupTestTemp(t)
 
 	cfg := &v1.Config{
@@ -431,6 +434,9 @@ func Test_resolveIfSymlink(t *testing.T) {
 }
 
 func Test_CopyEnvAndWildcards(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Test requires root privileges as it attempts to chown")
+	}
 	setupDirs := func(t *testing.T) (string, string) {
 		testDir := t.TempDir()
 
@@ -495,6 +501,9 @@ func Test_CopyEnvAndWildcards(t *testing.T) {
 }
 
 func TestCopyCommand_ExecuteCommand_Extended(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Test requires root privileges as it attempts to chown")
+	}
 	setupDirs := func(t *testing.T) (string, string) {
 		testDir := t.TempDir()
 

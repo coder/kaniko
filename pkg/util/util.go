@@ -24,9 +24,7 @@ import (
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -96,7 +94,7 @@ type CacheHasherFileInfoSum interface {
 }
 
 // CacheHasher takes into account everything the regular hasher does except for mtime
-func CacheHasher() func(string) (string, error) {
+func CacheHasher(ignoreOwnerAndGroup bool) func(string) (string, error) {
 	hasher := func(p string) (string, error) {
 		h := md5.New()
 		fi, err := filesystem.FS.Lstat(p)
@@ -114,18 +112,7 @@ func CacheHasher() func(string) (string, error) {
 
 		h.Write([]byte(fi.Mode().String()))
 
-		// Cian: this is a disgusting hack, but it removes the need for the
-		// envbuilder binary to be owned by root when doing a cache probe.
-		// We want to ignore UID and GID changes for the envbuilder binary
-		// specifically. When building and pushing an image using the envbuilder
-		// image, the embedded envbuilder binary will most likely be owned by
-		// root:root. However, when performing a cache probe operation, it is more
-		// likely that the file will be owned by the UID/GID that is running
-		// envbuilder, which in this case is not guaranteed to be root.
-		// Let's just pretend that it is, cross our fingers, and hope for the best.
-		lyingAboutOwnership := !fi.IsDir() &&
-			strings.HasSuffix(filepath.Clean(filepath.Dir(p)), ".envbuilder.tmp")
-		if lyingAboutOwnership {
+		if ignoreOwnerAndGroup {
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))
 			h.Write([]byte(","))
 			h.Write([]byte(strconv.FormatUint(uint64(0), 36)))

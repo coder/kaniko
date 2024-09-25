@@ -20,6 +20,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -948,6 +949,7 @@ func Test_stageBuilder_build(t *testing.T) {
 		crossStageDeps     map[int][]string
 		mockGetFSFromImage func(root string, img v1.Image, extract util.ExtractFunction) ([]string, error)
 		shouldInitSnapshot bool
+		skipReason         string
 	}
 
 	testCases := []testcase{
@@ -1136,6 +1138,13 @@ func Test_stageBuilder_build(t *testing.T) {
 			}
 		}(),
 		func() testcase {
+			name := "copy command cache enabled and key is not in cache"
+			if os.Getuid() != 0 {
+				return testcase{
+					description: name,
+					skipReason:  "test requires root, attempts chown",
+				}
+			}
 			dir, filenames := tempDirAndFile(t)
 			filename := filenames[0]
 			tarContent := []byte{}
@@ -1174,7 +1183,7 @@ COPY %s foo.txt
 
 			cmds := stage.Commands
 			return testcase{
-				description: "copy command cache enabled and key is not in cache",
+				description: name,
 				opts:        opts,
 				config:      &v1.ConfigFile{Config: v1.Config{WorkingDir: destDir}},
 				layerCache:  &fakeLayerCache{},
@@ -1193,6 +1202,13 @@ COPY %s foo.txt
 			}
 		}(),
 		func() testcase {
+			name := "cached run command followed by uncached copy command results in consistent read and write hashes"
+			if os.Getuid() != 0 {
+				return testcase{
+					description: name,
+					skipReason:  "test requires root, attempts chown",
+				}
+			}
 			dir, filenames := tempDirAndFile(t)
 			filename := filenames[0]
 			tarContent := generateTar(t, filename)
@@ -1251,7 +1267,7 @@ COPY %s bar.txt
 
 			cmds := stage.Commands
 			return testcase{
-				description: "cached run command followed by uncached copy command results in consistent read and write hashes",
+				description: name,
 				opts:        &config.KanikoOptions{Cache: true, CacheCopyLayers: true, CacheRunLayers: true},
 				rootDir:     dir,
 				config:      &v1.ConfigFile{Config: v1.Config{WorkingDir: destDir}},
@@ -1267,6 +1283,14 @@ COPY %s bar.txt
 			}
 		}(),
 		func() testcase {
+			name := "copy command followed by cached run command results in consistent read and write hashes"
+			if os.Getuid() != 0 {
+				return testcase{
+					description: name,
+					skipReason:  "test requires root, attempts chown",
+				}
+			}
+
 			dir, filenames := tempDirAndFile(t)
 			filename := filenames[0]
 			tarContent := generateTar(t, filename)
@@ -1325,7 +1349,7 @@ RUN foobar
 
 			cmds := stage.Commands
 			return testcase{
-				description: "copy command followed by cached run command results in consistent read and write hashes",
+				description: name,
 				opts:        &config.KanikoOptions{Cache: true, CacheRunLayers: true},
 				rootDir:     dir,
 				config:      &v1.ConfigFile{Config: v1.Config{WorkingDir: destDir}},
@@ -1471,6 +1495,9 @@ RUN foobar
 	}
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			if tc.skipReason != "" {
+				t.Skip(tc.skipReason)
+			}
 			var fileName string
 			if tc.commands == nil {
 				file, err := filesystem.CreateTemp("", "foo")
