@@ -354,17 +354,9 @@ Loop:
 	return nil
 }
 
-func GetUserGroup(chownStr string, env []string, from string) (int64, int64, error) {
-	// All files and directories copied from the build context are created with a
-	// UID and GID of 0 unless the optional --chown flag specifies a given
-	// username, groupname, or UID/GID combination to request specific ownership
-	// of the copied content.
+func GetUserGroup(chownStr string, env []string) (int64, int64, error) {
 	if chownStr == "" {
-		if from == "" {
-			return 0, 0, nil
-		} else {
-			return DoNotChangeUID, DoNotChangeGID, nil
-		}
+		return DoNotChangeUID, DoNotChangeGID, nil
 	}
 
 	chown, err := ResolveEnvironmentReplacement(chownStr, env, false)

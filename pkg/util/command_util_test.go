@@ -572,18 +572,8 @@ func TestGetUserGroup(t *testing.T) {
 			mockIDGetter: func(string, string) (uint32, uint32, error) {
 				return 0, 0, fmt.Errorf("should not be called")
 			},
-			expectedU: 0,
-			expectedG: 0,
-		},
-		{
-			description: "empty chown and non-empty from",
-			chown:       "",
-			from:        "foo",
-			mockIDGetter: func(string, string) (uint32, uint32, error) {
-				return 100, 1000, nil
-			},
-			expectedU: -1,
-			expectedG: -1,
+			expectedU: DoNotChangeUID,
+			expectedG: DoNotChangeGID,
 		},
 	}
 	for _, tc := range tests {
@@ -593,7 +583,7 @@ func TestGetUserGroup(t *testing.T) {
 				getUIDAndGIDFunc = originalIDGetter
 			}()
 			getUIDAndGIDFunc = tc.mockIDGetter
-			uid, gid, err := GetUserGroup(tc.chown, tc.env, tc.from)
+			uid, gid, err := GetUserGroup(tc.chown, tc.env)
 			testutil.CheckErrorAndDeepEqual(t, tc.shdErr, err, uid, tc.expectedU)
 			testutil.CheckErrorAndDeepEqual(t, tc.shdErr, err, gid, tc.expectedG)
 		})
