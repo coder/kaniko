@@ -94,7 +94,8 @@ func Parse(b []byte) ([]instructions.Stage, []instructions.ArgCommand, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	stages, metaArgs, err := instructions.Parse(p.AST)
+	// TODO (sas): do we need to provide a linter here?
+	stages, metaArgs, err := instructions.Parse(p.AST, nil)
 	if err != nil {
 		return nil, nil, err
 	}

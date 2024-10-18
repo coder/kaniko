@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -131,6 +132,67 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		return errors.Wrap(err, "adding default HOME variable")
 	}
 
+	// TODO (sas): figure out what kind of expansion we need to do to be standards compliant.
+	// Right now we don't do any kind of expansions, but parseMount requires an expander, even
+	// if its a noop
+	cmdRun.Expand(func(word string) (string, error) {
+		return word, nil
+	})
+
+	var secretFilesToClean []string
+	mounts := instructions.GetMounts(cmdRun)
+	for _, mount := range mounts {
+		switch mount.Type {
+		case instructions.MountTypeSecret:
+			// Implemented as per:
+			// https://docs.docker.com/reference/dockerfile/#run---mounttypesecret
+
+			// TODO (sas): we probably shouldn't access os.Environ directly here.
+			// We should probably pass in a map of these secrets via config.
+			// This is okay for the current PoC though
+			// TODO (sas): handle case sensitivity of env vars
+			envName := fmt.Sprintf("KANIKO_SECRET_%s", mount.CacheID)
+			secret, secretSet := os.LookupEnv(envName)
+			if !secretSet && mount.Required {
+				return fmt.Errorf("required secret %s not found", mount.CacheID)
+			}
+
+			// If a target is specified, we write to file:
+			// If no target is specified and no env is specified, we write to /run/secrets/<id>
+			// If no target is specified and an env is specified, we set the env and don't write to file
+			if mount.Env == nil || mount.Target != "" {
+				targetFile := mount.Target
+				if targetFile == "" {
+					targetFile = fmt.Sprintf("/run/secrets/%s", mount.CacheID)
+				}
+
+				// TODO (sas): check what these file modes should be set to.
+				os.MkdirAll(filepath.Dir(targetFile), 0755)
+				if err := os.WriteFile(targetFile, []byte(secret), 0644); err != nil {
+					return errors.Wrap(err, "writing secret to file")
+				}
+				secretFilesToClean = append(secretFilesToClean, targetFile)
+			}
+
+			if mount.Env == nil {
+				continue
+			}
+
+			targetEnv := *mount.Env
+			if targetEnv == "" {
+				targetEnv = mount.CacheID
+			}
+
+			env = append(env, fmt.Sprintf("%s=%s", targetEnv, secret))
+		// case instructions.MountTypeBind:
+		// case instructions.MountTypeTmpfs:
+		// case instructions.MountTypeCache:
+		// case instructions.MountTypeSSH
+		default:
+			logrus.Warnf("Mount type %s is not supported", mount.Type)
+		}
+	}
+
 	cmd.Env = env
 
 	logrus.Infof("Running: %s", cmd.Args)
@@ -144,6 +206,12 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	}
 	if err := cmd.Wait(); err != nil {
 		return errors.Wrap(err, "waiting for process to exit")
+	}
+
+	for _, secretFile := range secretFilesToClean {
+		if err := os.Remove(secretFile); err != nil {
+			return errors.Wrap(err, "removing secret file")
+		}
 	}
 
 	// it's not an error if there are no grandchildren
