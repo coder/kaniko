@@ -68,8 +68,7 @@ func GetCommand(cmd instructions.Command, fileContext util.FileContext, useNewRu
 	switch c := cmd.(type) {
 	case *instructions.RunCommand:
 		if useNewRun {
-			// TODO (sas): pass secrets into RunMarkerCommand and ensure they're usable as well
-			return &RunMarkerCommand{cmd: c, shdCache: cacheRun, output: output}, nil
+			return &RunMarkerCommand{cmd: c, shdCache: cacheRun, output: output, secrets: secrets}, nil
 		}
 		return &RunCommand{cmd: c, shdCache: cacheRun, output: output, secrets: secrets}, nil
 	case *instructions.CopyCommand:
