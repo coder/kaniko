@@ -43,10 +43,10 @@ type RunOutput struct {
 
 type RunCommand struct {
 	BaseCommand
-	cmd      *instructions.RunCommand
-	output   *RunOutput
-	secrets  []string
-	shdCache bool
+	cmd          *instructions.RunCommand
+	output       *RunOutput
+	buildSecrets []string
+	shdCache     bool
 }
 
 // for testing
@@ -59,10 +59,10 @@ func (r *RunCommand) IsArgsEnvsRequiredInCache() bool {
 }
 
 func (r *RunCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
-	return runCommandInExec(config, buildArgs, r.cmd, r.output, r.secrets)
+	return runCommandInExec(config, buildArgs, r.cmd, r.output, r.buildSecrets)
 }
 
-func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput, secrets []string) error {
+func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput, buildSecrets []string) error {
 	if output == nil {
 		output = &RunOutput{}
 	}
@@ -133,14 +133,26 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		return errors.Wrap(err, "adding default HOME variable")
 	}
 
-	// TODO (sas): figure out what kind of expansion we need to do to be standards compliant.
-	// Right now we don't do any kind of expansions, but parseMount() requires an expander, even
-	// if its a noop
 	cmdRun.Expand(func(word string) (string, error) {
+		// As far as I can tell, some buildkit commands are required to have an Expand() method,
+		// which is responsible for this:
+		// https://docs.docker.com/build/building/variables/
+		// I can't see that we use it anywhere yet, so I'm not adding support for it here.
+		// This expander function is a noop.
+		// Once we would like to support variable expansion, we can extract and complete this function to handle
+		// expansion for all commands.
 		return word, nil
 	})
 
-	var secretFilesToClean []string
+	buildSecretsMap := make(map[string]string)
+	for _, s := range buildSecrets {
+		parts := strings.SplitN(s, "=", 2)
+		if len(parts) == 2 {
+			buildSecretsMap[parts[0]] = parts[1]
+		}
+	}
+
+	var buildSecretFilesToClean []string
 	mounts := instructions.GetMounts(cmdRun)
 	for _, mount := range mounts {
 		switch mount.Type {
@@ -148,18 +160,8 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 			// Implemented as per:
 			// https://docs.docker.com/reference/dockerfile/#run---mounttypesecret
 
-			// TODO (sas): turn secrets into either a map outside the loop so it can be accessed efficiently
-			var secret string
-			secretSet := false
 			envName := mount.CacheID
-			for _, s := range secrets {
-				parts := strings.SplitN(s, "=", 2)
-				if len(parts) == 2 && parts[0] == envName {
-					secret = parts[1]
-					secretSet = true
-					break
-				}
-			}
+			secret, secretSet := buildSecretsMap[envName]
 			if !secretSet && mount.Required {
 				return fmt.Errorf("required secret %s not found", mount.CacheID)
 			}
@@ -173,14 +175,15 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 					targetFile = fmt.Sprintf("/run/secrets/%s", mount.CacheID)
 				}
 
-				// TODO (sas): check what these file modes should be set to.
 				os.MkdirAll(filepath.Dir(targetFile), 0700)
 				if err := os.WriteFile(targetFile, []byte(secret), 0600); err != nil {
 					return errors.Wrap(err, "writing secret to file")
 				}
-				secretFilesToClean = append(secretFilesToClean, targetFile)
+				buildSecretFilesToClean = append(buildSecretFilesToClean, targetFile)
 			}
 
+			// We don't return in the block above, because its possible to have both a target and an env.
+			// As such we need this guard clause or we risk getting a segfault below.
 			if mount.Env == nil {
 				continue
 			}
@@ -216,7 +219,7 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		return errors.Wrap(err, "waiting for process to exit")
 	}
 
-	for _, secretFile := range secretFilesToClean {
+	for _, secretFile := range buildSecretFilesToClean {
 		if err := os.Remove(secretFile); err != nil {
 			return errors.Wrap(err, "removing secret file")
 		}

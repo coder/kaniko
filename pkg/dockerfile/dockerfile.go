@@ -94,7 +94,9 @@ func Parse(b []byte) ([]instructions.Stage, []instructions.ArgCommand, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	// TODO (sas): do we need to provide a linter here?
+
+	// A major bump of buildkit from v26.1.5 to v27.2.1 introduced an additional param below, which represents a linter.
+	// This is a new feature that could be investigated. For now, we are ignoring it.
 	stages, metaArgs, err := instructions.Parse(p.AST, nil)
 	if err != nil {
 		return nil, nil, err
