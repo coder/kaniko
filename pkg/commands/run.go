@@ -45,6 +45,7 @@ type RunCommand struct {
 	BaseCommand
 	cmd      *instructions.RunCommand
 	output   *RunOutput
+	secrets  []string
 	shdCache bool
 }
 
@@ -58,10 +59,10 @@ func (r *RunCommand) IsArgsEnvsRequiredInCache() bool {
 }
 
 func (r *RunCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
-	return runCommandInExec(config, buildArgs, r.cmd, r.output)
+	return runCommandInExec(config, buildArgs, r.cmd, r.output, r.secrets)
 }
 
-func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput) error {
+func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput, secrets []string) error {
 	if output == nil {
 		output = &RunOutput{}
 	}
@@ -133,7 +134,7 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	}
 
 	// TODO (sas): figure out what kind of expansion we need to do to be standards compliant.
-	// Right now we don't do any kind of expansions, but parseMount requires an expander, even
+	// Right now we don't do any kind of expansions, but parseMount() requires an expander, even
 	// if its a noop
 	cmdRun.Expand(func(word string) (string, error) {
 		return word, nil
@@ -147,17 +148,23 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 			// Implemented as per:
 			// https://docs.docker.com/reference/dockerfile/#run---mounttypesecret
 
-			// TODO (sas): we probably shouldn't access os.Environ directly here.
-			// We should probably pass in a map of these secrets via config.
-			// This is okay for the current PoC though
-			// TODO (sas): handle case sensitivity of env vars
-			envName := fmt.Sprintf("KANIKO_SECRET_%s", mount.CacheID)
-			secret, secretSet := os.LookupEnv(envName)
+			// TODO (sas): turn secrets into either a map outside the loop so it can be accessed efficiently
+			var secret string
+			secretSet := false
+			envName := mount.CacheID
+			for _, s := range secrets {
+				parts := strings.SplitN(s, "=", 2)
+				if len(parts) == 2 && parts[0] == envName {
+					secret = parts[1]
+					secretSet = true
+					break
+				}
+			}
 			if !secretSet && mount.Required {
 				return fmt.Errorf("required secret %s not found", mount.CacheID)
 			}
 
-			// If a target is specified, we write to file:
+			// If a target is specified, we write to the file specified by the target:
 			// If no target is specified and no env is specified, we write to /run/secrets/<id>
 			// If no target is specified and an env is specified, we set the env and don't write to file
 			if mount.Env == nil || mount.Target != "" {
@@ -167,8 +174,8 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 				}
 
 				// TODO (sas): check what these file modes should be set to.
-				os.MkdirAll(filepath.Dir(targetFile), 0755)
-				if err := os.WriteFile(targetFile, []byte(secret), 0644); err != nil {
+				os.MkdirAll(filepath.Dir(targetFile), 0700)
+				if err := os.WriteFile(targetFile, []byte(secret), 0600); err != nil {
 					return errors.Wrap(err, "writing secret to file")
 				}
 				secretFilesToClean = append(secretFilesToClean, targetFile)
@@ -184,6 +191,7 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 			}
 
 			env = append(env, fmt.Sprintf("%s=%s", targetEnv, secret))
+		// Nice to haves beyond the scope of the current issue:
 		// case instructions.MountTypeBind:
 		// case instructions.MountTypeTmpfs:
 		// case instructions.MountTypeCache:
