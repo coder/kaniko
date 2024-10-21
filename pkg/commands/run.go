@@ -137,10 +137,13 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		// As far as I can tell, some buildkit commands are required to have an Expand() method,
 		// which is responsible for this:
 		// https://docs.docker.com/build/building/variables/
+		//
 		// I can't see that we use it anywhere yet, so I'm not adding support for it here.
-		// This expander function is a noop.
+		// This expander function is a noop, but buildkit's parseMount function requires it to
+		// have been called or it won't parse the --mount flags.
+		//
 		// Once we would like to support variable expansion, we can extract and complete this function to handle
-		// expansion for all commands.
+		// expansion for all commands that need it.
 		return word, nil
 	})
 
