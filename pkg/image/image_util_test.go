@@ -117,7 +117,7 @@ func parse(s string) ([]instructions.Stage, error) {
 	if err != nil {
 		return nil, err
 	}
-	stages, _, err := instructions.Parse(p.AST)
+	stages, _, err := instructions.Parse(p.AST, nil)
 	if err != nil {
 		return nil, err
 	}
