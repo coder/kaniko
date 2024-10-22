@@ -348,8 +348,8 @@ github.com/mitchellh/go-homedir v1.1.0 h1:lukF9ziXFxDFPkA1vsr5zpc1XuPDn/wFntq5mG
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
 github.com/mitchellh/mapstructure v1.5.0 h1:jeMsZIYE/09sWLaz43PL7Gy6RuMjD2eJVyuac5Z2hdY=
 github.com/mitchellh/mapstructure v1.5.0/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=
-github.com/moby/buildkit v0.14.1-0.20240627230018-8397d0b9f756 h1:mA5DQAEH2HFsn0hxzK5kDLF/JZe87tbMmMD3KTsCY7c=
-github.com/moby/buildkit v0.14.1-0.20240627230018-8397d0b9f756/go.mod h1:ui4ZkNR6Z3kVMVqLY5JcoWcmlibi7TJL3bdzikvs5Yw=
+github.com/moby/buildkit v0.14.1-0.20240702034250-1f3eab8c59ff h1:pmgyyPyT7AM7h+wEwsoX9IwmEcxSpiZ2NOCTLaVwHs0=
+github.com/moby/buildkit v0.14.1-0.20240702034250-1f3eab8c59ff/go.mod h1:UfZK/h0jzjzu6FtlHS3MNMuxJN2F+gxDscxo2pBoI/c=
 github.com/moby/docker-image-spec v1.3.1 h1:jMKff3w6PgbfSa69GfNg+zN/XLhfXJGnEx3Nl2EsFP0=
 github.com/moby/docker-image-spec v1.3.1/go.mod h1:eKmb5VW8vQEh/BAr2yvVNvuiJuY6UIocYsFu/DxxRpo=
 github.com/moby/locker v1.0.1 h1:fOXqR41zeveg4fFODix+1Ch4mj/gT0NE1XJbp/epuBg=
