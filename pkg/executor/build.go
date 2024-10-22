@@ -191,10 +191,6 @@ func initConfig(img partial.WithConfigFile, opts *config.KanikoOptions) (*v1.Con
 		}
 	}
 
-	if imageConfig.Config.WorkingDir == "" {
-		imageConfig.Config.WorkingDir = "/"
-	}
-
 	return imageConfig, nil
 }
 
