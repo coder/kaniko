@@ -34,29 +34,31 @@ jobs:
         remove-haskell: 'true'
     - name: Upgrade docker
       run: |
-        apt-get remove -y docker docker-engine docker.io containerd runc
-
-        apt-get update -y
-
-        apt-get install -y \
+        sudo apt-get remove -y docker docker-engine docker.io containerd runc docker-doc docker-compose docker-compose-v2 podman-docker 
+        sudo apt-get update -y
+        sudo apt-get install -y \
           ca-certificates \
           curl \
           gnupg \
           lsb-release
 
-        mkdir -p /etc/apt/keyrings
+        # Add Docker's official GPG key
+        sudo install -m 0755 -d /etc/apt/keyrings
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-          gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
         echo \
           "deb [arch=$(dpkg --print-architecture) \
           signed-by=/etc/apt/keyrings/docker.gpg] \
           https://download.docker.com/linux/ubuntu \
           $(lsb_release -cs) stable" | \
-          tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-        apt-get update -y
-        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        # Update the package list again with the new repository
+        sudo apt-get update -y
+
+        # Install the latest version of Docker Engine, CLI, and containerd
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
     - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
       with:
