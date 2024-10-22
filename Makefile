@@ -27,6 +27,9 @@ ORG := github.com/GoogleContainerTools
 PROJECT := kaniko
 REGISTRY?=gcr.io/kaniko-project
 
+DOCKERFILE_PATTERN := Dockerfile_test_cmd
+export DOCKERFILE_PATTERN
+
 REPOPATH ?= $(ORG)/$(PROJECT)
 VERSION_PACKAGE = $(REPOPATH)/pkg/version
 
