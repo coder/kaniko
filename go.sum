@@ -348,8 +348,8 @@ github.com/mitchellh/go-homedir v1.1.0 h1:lukF9ziXFxDFPkA1vsr5zpc1XuPDn/wFntq5mG
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
 github.com/mitchellh/mapstructure v1.5.0 h1:jeMsZIYE/09sWLaz43PL7Gy6RuMjD2eJVyuac5Z2hdY=
 github.com/mitchellh/mapstructure v1.5.0/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=
-github.com/moby/buildkit v0.14.1-0.20240619075603-93823870f0a6 h1:JRvtc9SDiu5u+irIXkzt6RCUtOyfPGZUjKONLPxTc00=
-github.com/moby/buildkit v0.14.1-0.20240619075603-93823870f0a6/go.mod h1:QHgvQmdelSC2Vfnd3cgv0rnmpYy5pfMDE7gX9OvJ520=
+github.com/moby/buildkit v0.14.1-0.20240701195829-a08a9b64d09e h1:pp5q/E7Xra9cCp+cnU2TWM0F9OqzvWVSNXAmYi8cfYI=
+github.com/moby/buildkit v0.14.1-0.20240701195829-a08a9b64d09e/go.mod h1:UfZK/h0jzjzu6FtlHS3MNMuxJN2F+gxDscxo2pBoI/c=
 github.com/moby/docker-image-spec v1.3.1 h1:jMKff3w6PgbfSa69GfNg+zN/XLhfXJGnEx3Nl2EsFP0=
 github.com/moby/docker-image-spec v1.3.1/go.mod h1:eKmb5VW8vQEh/BAr2yvVNvuiJuY6UIocYsFu/DxxRpo=
 github.com/moby/locker v1.0.1 h1:fOXqR41zeveg4fFODix+1Ch4mj/gT0NE1XJbp/epuBg=
@@ -471,6 +471,8 @@ github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsT
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8=
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
+github.com/tonistiigi/go-csvvalue v0.0.0-20240619222358-bb8dd5cba3c2 h1:4dXTcm/McJMoXXFhqr+4rNL4WkLqMoHkdMhT4nU0Z28=
+github.com/tonistiigi/go-csvvalue v0.0.0-20240619222358-bb8dd5cba3c2/go.mod h1:278M4p8WsNh3n4a1eqiFcV2FGk7wE5fwUpUom9mK9lE=
 github.com/toqueteos/webbrowser v1.2.0 h1:tVP/gpK69Fx+qMJKsLE7TD8LuGWPnEV71wBN9rrstGQ=
 github.com/toqueteos/webbrowser v1.2.0/go.mod h1:XWoZq4cyp9WeUeak7w7LXRUQf1F1ATJMir8RTqb4ayM=
 github.com/twpayne/go-vfs/v5 v5.0.4 h1:/ne3h+rW7f5YOyOFguz+3ztfUwzOLR0Vts3y0mMAitg=
