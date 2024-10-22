@@ -21,7 +21,7 @@ require (
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/slowjam v1.1.1
 	github.com/minio/highwayhash v1.0.2
-	github.com/moby/buildkit v0.14.1-0.20240624193445-76b7b049c61d
+	github.com/moby/buildkit v0.14.1-0.20240627003837-555979d2c73e
 	github.com/otiai10/copy v1.14.0
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
@@ -180,6 +180,7 @@ require (
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/viper v1.18.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tonistiigi/go-csvvalue v0.0.0-20240619222358-bb8dd5cba3c2 // indirect
 	github.com/toqueteos/webbrowser v1.2.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
