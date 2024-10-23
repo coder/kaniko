@@ -55,6 +55,7 @@ var argsMap = map[string][]string{
 	"Dockerfile_test_run":        {"file=/file"},
 	"Dockerfile_test_run_new":    {"file=/file"},
 	"Dockerfile_test_run_redo":   {"file=/file"},
+	"Dockerfile_test_run_mount":  {"file=/file"},
 	"Dockerfile_test_workdir":    {"workdir=/arg/workdir"},
 	"Dockerfile_test_add":        {"file=context/foo"},
 	"Dockerfile_test_arg_secret": {"SSH_PRIVATE_KEY", "SSH_PUBLIC_KEY=Pµbl1cK€Y"},
@@ -66,6 +67,19 @@ var argsMap = map[string][]string{
 		"file3=context/b*",
 	},
 	"Dockerfile_test_multistage": {"file=/foo2"},
+}
+
+type buildSecret struct {
+	name  string
+	value string
+}
+
+var secretsMap = map[string][]buildSecret{
+	"Dockerfile_test_run_mount": {
+		{name: "FOO", value: "foo"},
+		{name: "BAR", value: "bar"},
+		{name: "BAZ", value: "baz"},
+	},
 }
 
 // Environment to build Dockerfiles with, used for both docker and kaniko builds
@@ -257,8 +271,15 @@ func (d *DockerFileBuilder) BuildDockerImage(t *testing.T, imageRepo, dockerfile
 		buildArgs = append(buildArgs, buildArgFlag, arg)
 	}
 
+	var buildSecrets []string
+	secretFlag := "--secret"
+	for _, secret := range secretsMap[dockerfile] {
+		buildSecrets = append(buildSecrets, secretFlag, "id="+secret.name)
+	}
+
 	// build docker image
-	additionalFlags := append(buildArgs, additionalDockerFlagsMap[dockerfile]...)
+	additionalFlags := append(buildArgs, buildSecrets...)
+	additionalFlags = append(additionalFlags, additionalDockerFlagsMap[dockerfile]...)
 	dockerImage := strings.ToLower(imageRepo + dockerPrefix + dockerfile)
 
 	dockerArgs := []string{
@@ -277,6 +298,9 @@ func (d *DockerFileBuilder) BuildDockerImage(t *testing.T, imageRepo, dockerfile
 	dockerCmd := exec.Command("docker", dockerArgs...)
 	if env, ok := envsMap[dockerfile]; ok {
 		dockerCmd.Env = append(dockerCmd.Env, env...)
+	}
+	for _, secret := range secretsMap[dockerfile] {
+		dockerCmd.Env = append(dockerCmd.Env, fmt.Sprintf("%s=%s", secret.name, secret.value))
 	}
 
 	out, err := RunCommandWithoutTest(dockerCmd)
@@ -506,6 +530,11 @@ func buildKanikoImage(
 		}
 	}
 
+	if secrets, ok := secretsMap[dockerfile]; ok {
+		for _, secret := range secrets {
+			dockerRunFlags = append(dockerRunFlags, "-e", fmt.Sprintf("KANIKO_BUILD_SECRET_%s=%s", secret.name, secret.value))
+		}
+	}
 	dockerRunFlags = addServiceAccountFlags(dockerRunFlags, serviceAccount)
 
 	kanikoDockerfilePath := path.Join(buildContextPath, dockerfilesPath, dockerfile)

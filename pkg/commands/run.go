@@ -155,6 +155,7 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		}
 	}
 
+	const secretsDir = "/run/secrets"
 	var buildSecretFilesToClean []string
 	mounts := instructions.GetMounts(cmdRun)
 	for _, mount := range mounts {
@@ -175,10 +176,15 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 			if mount.Env == nil || mount.Target != "" {
 				targetFile := mount.Target
 				if targetFile == "" {
-					targetFile = fmt.Sprintf("/run/secrets/%s", mount.CacheID)
+					targetFile = filepath.Join(secretsDir, mount.CacheID)
 				}
 
-				os.MkdirAll(filepath.Dir(targetFile), 0700)
+				createdDirs, err := mkdirAllAndListCreated(filepath.Dir(targetFile), 0700)
+				if err != nil {
+					return errors.Wrap(err, "creating directories for secret file")
+				}
+				buildSecretFilesToClean = append(buildSecretFilesToClean, createdDirs...)
+
 				if err := os.WriteFile(targetFile, []byte(secret), 0600); err != nil {
 					return errors.Wrap(err, "writing secret to file")
 				}
@@ -186,7 +192,7 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 			}
 
 			// We don't return in the block above, because its possible to have both a target and an env.
-			// As such we need this guard clause or we risk getting a segfault below.
+			// As such we need this guard clause or we risk getting a nil pointer below.
 			if mount.Env == nil {
 				continue
 			}
@@ -222,9 +228,36 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		return errors.Wrap(err, "waiting for process to exit")
 	}
 
-	for _, secretFile := range buildSecretFilesToClean {
-		if err := os.Remove(secretFile); err != nil {
-			return errors.Wrap(err, "removing secret file")
+	// We need to recursively clean up after any secrets that were written to disk.
+	// But also, we need to clean up any directories that we created to house those
+	// secrets. But also we should only clean up that directory if the build process
+	// hasn't put anything else in there. If it has put anything else non secret in
+	// there, then that directory is now meant to make it into the container and we
+	// shouldn't remove it. This loop does that. We iterate in reverse because that
+	// way we can remove the deepest directories first.
+	for i := len(buildSecretFilesToClean) - 1; i >= 0; i-- {
+		dir := buildSecretFilesToClean[i]
+
+		info, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return errors.Wrap(err, "statting directory")
+		}
+
+		if info.IsDir() {
+			err := os.Remove(dir)
+			if err != nil {
+				if os.IsExist(err) {
+					continue
+				}
+				return err
+			}
+		} else {
+			err := os.Remove(dir)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -233,6 +266,33 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		return err
 	}
 	return nil
+}
+
+func mkdirAllAndListCreated(path string, perm os.FileMode) ([]string, error) {
+	var createdDirs []string
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+
+	dirs := filepath.SplitList(absPath)
+	currentPath := string(os.PathSeparator)
+
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		currentPath = filepath.Join(currentPath, dir)
+
+		if _, err := os.Stat(currentPath); os.IsNotExist(err) {
+			if err := os.Mkdir(currentPath, perm); err != nil {
+				return createdDirs, err
+			}
+			createdDirs = append(createdDirs, currentPath)
+		}
+	}
+
+	return createdDirs, nil
 }
 
 // addDefaultHOME adds the default value for HOME if it isn't already set
