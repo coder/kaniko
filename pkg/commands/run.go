@@ -49,6 +49,8 @@ type RunCommand struct {
 	shdCache     bool
 }
 
+const secretsDir = "/run/secrets"
+
 // for testing
 var (
 	userLookup = util.LookupUser
@@ -134,29 +136,23 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	}
 
 	cmdRun.Expand(func(word string) (string, error) {
-		// As far as I can tell, some buildkit commands are required to have an Expand() method,
-		// which is responsible for this:
+		// NOTE(SasSwart): This is a noop function. It's here to satisfy the buildkit parser.
+		// Without this, the buildkit parser won't parse --mount flags for RUN directives.
+		// Support for expansion in RUN directives deferred until its needed.
 		// https://docs.docker.com/build/building/variables/
-		//
-		// I can't see that we use it anywhere yet, so I'm not adding support for it here.
-		// This expander function is a noop, but buildkit's parseMount function requires it to
-		// have been called or it won't parse the --mount flags.
-		//
-		// Once we would like to support variable expansion, we can extract and complete this function to handle
-		// expansion for all commands that need it.
 		return word, nil
 	})
 
 	buildSecretsMap := make(map[string]string)
 	for _, s := range buildSecrets {
-		parts := strings.SplitN(s, "=", 2)
-		if len(parts) == 2 {
-			buildSecretsMap[parts[0]] = parts[1]
+		secretName, secretValue, found := strings.Cut(s, "=")
+		if !found {
+			return fmt.Errorf("invalid secret %s", s)
 		}
+		buildSecretsMap[secretName] = secretValue
 	}
 
-	const secretsDir = "/run/secrets"
-	var buildSecretFilesToClean []string
+	var buildSecretDirOrFilesToClean []string
 	mounts := instructions.GetMounts(cmdRun)
 	for _, mount := range mounts {
 		switch mount.Type {
@@ -183,12 +179,12 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 				if err != nil {
 					return errors.Wrap(err, "creating directories for secret file")
 				}
-				buildSecretFilesToClean = append(buildSecretFilesToClean, createdDirs...)
+				buildSecretDirOrFilesToClean = append(buildSecretDirOrFilesToClean, createdDirs...)
 
 				if err := os.WriteFile(targetFile, []byte(secret), 0600); err != nil {
 					return errors.Wrap(err, "writing secret to file")
 				}
-				buildSecretFilesToClean = append(buildSecretFilesToClean, targetFile)
+				buildSecretDirOrFilesToClean = append(buildSecretDirOrFilesToClean, targetFile)
 			}
 
 			// We don't return in the block above, because its possible to have both a target and an env.
@@ -203,7 +199,9 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 			}
 
 			env = append(env, fmt.Sprintf("%s=%s", targetEnv, secret))
-		// Nice to haves beyond the scope of the current issue:
+		// NOTE(SasSwart):
+		// Buildkit v0.16.0 brought support for `RUN --mount` flags. Kaniko support for the mount
+		// types below is deferred until its needed.
 		// case instructions.MountTypeBind:
 		// case instructions.MountTypeTmpfs:
 		// case instructions.MountTypeCache:
@@ -235,10 +233,10 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	// there, then that directory is now meant to make it into the container and we
 	// shouldn't remove it. This loop does that. We iterate in reverse because that
 	// way we can remove the deepest directories first.
-	for i := len(buildSecretFilesToClean) - 1; i >= 0; i-- {
-		dir := buildSecretFilesToClean[i]
+	for i := len(buildSecretDirOrFilesToClean) - 1; i >= 0; i-- {
+		dir := buildSecretDirOrFilesToClean[i]
 
-		info, err := os.Stat(dir)
+		info, err := filesystem.FS.Stat(dir)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
@@ -279,12 +277,9 @@ func mkdirAllAndListCreated(path string, perm os.FileMode) ([]string, error) {
 	currentPath := string(os.PathSeparator)
 
 	for _, dir := range dirs {
-		if dir == "" {
-			continue
-		}
 		currentPath = filepath.Join(currentPath, dir)
 
-		if _, err := os.Stat(currentPath); os.IsNotExist(err) {
+		if _, err := filesystem.FS.Stat(currentPath); os.IsNotExist(err) {
 			if err := os.Mkdir(currentPath, perm); err != nil {
 				return createdDirs, err
 			}
