@@ -79,6 +79,7 @@ var secretsMap = map[string][]buildSecret{
 		{name: "FOO", value: "foo"},
 		{name: "BAR", value: "bar"},
 		{name: "BAZ", value: "baz"},
+		{name: "QUX", value: "qux"},
 	},
 }
 

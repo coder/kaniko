@@ -19,6 +19,8 @@ RUN --mount=type=secret,id=FOO,env=FOO,required=true echo "$FOO" > /etc/foo
 RUN --mount=type=secret,id=BAR cat /run/secrets/BAR > /etc/bar
 # Make sure we set secrets to custom disk location the same way docker does
 RUN --mount=type=secret,id=BAZ,target=/baz.secret cat /baz.secret > /etc/baz
+# Make sure relative targets for secret mounts work
+RUN --mount=type=secret,id=QUX,target=qux.secret cat qux.secret > /etc/qux
 
 # Test with ARG so that we know our implementation of secrets don't override args
 ARG file
