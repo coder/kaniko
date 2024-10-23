@@ -152,7 +152,7 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		buildSecretsMap[secretName] = secretValue
 	}
 
-	var buildSecretDirOrFilesToClean []string
+	secretFileManager := FileCreatorCleaner{}
 	mounts := instructions.GetMounts(cmdRun)
 	for _, mount := range mounts {
 		switch mount.Type {
@@ -174,17 +174,10 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 				if targetFile == "" {
 					targetFile = filepath.Join(secretsDir, mount.CacheID)
 				}
-
-				createdDirs, err := mkdirAllAndListCreated(filepath.Dir(targetFile), 0700)
-				if err != nil {
-					return errors.Wrap(err, "creating directories for secret file")
+				if !filepath.IsAbs(targetFile) {
+					targetFile = filepath.Join(config.WorkingDir, targetFile)
 				}
-				buildSecretDirOrFilesToClean = append(buildSecretDirOrFilesToClean, createdDirs...)
-
-				if err := os.WriteFile(targetFile, []byte(secret), 0600); err != nil {
-					return errors.Wrap(err, "writing secret to file")
-				}
-				buildSecretDirOrFilesToClean = append(buildSecretDirOrFilesToClean, targetFile)
+				secretFileManager.MkdirAndWriteFile(targetFile, []byte(secret), 0700, 0600)
 			}
 
 			// We don't return in the block above, because its possible to have both a target and an env.
@@ -226,37 +219,9 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		return errors.Wrap(err, "waiting for process to exit")
 	}
 
-	// We need to recursively clean up after any secrets that were written to disk.
-	// But also, we need to clean up any directories that we created to house those
-	// secrets. But also we should only clean up that directory if the build process
-	// hasn't put anything else in there. If it has put anything else non secret in
-	// there, then that directory is now meant to make it into the container and we
-	// shouldn't remove it. This loop does that. We iterate in reverse because that
-	// way we can remove the deepest directories first.
-	for i := len(buildSecretDirOrFilesToClean) - 1; i >= 0; i-- {
-		dir := buildSecretDirOrFilesToClean[i]
-
-		info, err := filesystem.FS.Stat(dir)
-		if os.IsNotExist(err) {
-			continue
-		} else if err != nil {
-			return errors.Wrap(err, "statting directory")
-		}
-
-		if info.IsDir() {
-			err := os.Remove(dir)
-			if err != nil {
-				if os.IsExist(err) {
-					continue
-				}
-				return err
-			}
-		} else {
-			err := os.Remove(dir)
-			if err != nil {
-				return err
-			}
-		}
+	err = secretFileManager.Clean()
+	if err != nil {
+		return errors.Wrap(err, "cleaning up secrets")
 	}
 
 	// it's not an error if there are no grandchildren
@@ -266,28 +231,62 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	return nil
 }
 
-func mkdirAllAndListCreated(path string, perm os.FileMode) ([]string, error) {
-	var createdDirs []string
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
-	}
+// FileCreatorCleaner keeps tracks of all files and directories that it created in the order that they were created.
+// Once asked to clean up, it will remove all files and directories in the reverse order that they were created.
+type FileCreatorCleaner struct {
+	filesToClean []string
+	dirsToClean  []string
+}
 
-	dirs := filepath.SplitList(absPath)
+func (s *FileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm, filePerm os.FileMode) error {
+	dirPath := filepath.Dir(path)
+	parentDirs := filepath.SplitList(dirPath)
+
+	// Start at the root directory
 	currentPath := string(os.PathSeparator)
 
-	for _, dir := range dirs {
-		currentPath = filepath.Join(currentPath, dir)
+	for _, nextDirDown := range parentDirs {
+		// Traverse one level down
+		currentPath = filepath.Join(currentPath, nextDirDown)
 
 		if _, err := filesystem.FS.Stat(currentPath); os.IsNotExist(err) {
-			if err := os.Mkdir(currentPath, perm); err != nil {
-				return createdDirs, err
+			if err := os.Mkdir(currentPath, dirPerm); err != nil {
+				return err
 			}
-			createdDirs = append(createdDirs, currentPath)
+			s.dirsToClean = append(s.dirsToClean, currentPath)
 		}
 	}
 
-	return createdDirs, nil
+	// With all parent directories created, we can now create the actual secret file
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		return errors.Wrap(err, "writing secret to file")
+	}
+	s.filesToClean = append(s.filesToClean, path)
+
+	return nil
+}
+
+func (s *FileCreatorCleaner) Clean() error {
+	for i := len(s.filesToClean) - 1; i >= 0; i-- {
+		if err := os.Remove(s.filesToClean[i]); err != nil {
+			return err
+		}
+	}
+
+	for i := len(s.dirsToClean) - 1; i >= 0; i-- {
+		if err := os.Remove(s.dirsToClean[i]); err != nil {
+			pathErr := os.PathError{}
+			// If a path that we need to clean up is not empty, then that means
+			// that a third party has placed something in there since we created it.
+			// In that case, we should not remove it, because it no longer belongs exclusively to us.
+			if errors.As(err, &pathErr); pathErr.Err == syscall.ENOTEMPTY {
+				continue
+			}
+			return err
+		}
+	}
+
+	return nil
 }
 
 // addDefaultHOME adds the default value for HOME if it isn't already set
