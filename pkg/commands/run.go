@@ -64,7 +64,7 @@ func (r *RunCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.Bui
 	return runCommandInExec(config, buildArgs, r.cmd, r.output, r.buildSecrets)
 }
 
-func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput, buildSecrets []string) error {
+func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput, buildSecrets []string) (err error) {
 	if output == nil {
 		output = &RunOutput{}
 	}
@@ -153,6 +153,13 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	}
 
 	secretFileManager := FileCreatorCleaner{}
+	defer func() {
+		cleanupErr := secretFileManager.Clean()
+		if err == nil {
+			err = cleanupErr
+		}
+	}()
+
 	mounts := instructions.GetMounts(cmdRun)
 	for _, mount := range mounts {
 		switch mount.Type {
@@ -217,11 +224,6 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	}
 	if err := cmd.Wait(); err != nil {
 		return errors.Wrap(err, "waiting for process to exit")
-	}
-
-	err = secretFileManager.Clean()
-	if err != nil {
-		return errors.Wrap(err, "cleaning up secrets")
 	}
 
 	// it's not an error if there are no grandchildren
