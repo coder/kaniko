@@ -60,6 +60,7 @@ type KanikoOptions struct {
 	IgnorePaths              multiArg
 	DockerfilePath           string
 	DockerfileContent        string
+	BuildSecrets             []string
 	SrcContext               string
 	SnapshotMode             string
 	SnapshotModeDeprecated   string

@@ -144,7 +144,7 @@ func newStageBuilder(args *dockerfile.BuildArgs, opts *config.KanikoOptions, sta
 		command, err := commands.GetCommand(cmd, fileContext, opts.RunV2, opts.CacheCopyLayers, opts.CacheRunLayers, &commands.RunOutput{
 			Stdout: opts.RunStdout,
 			Stderr: opts.RunStderr,
-		})
+		}, opts.BuildSecrets)
 		if err != nil {
 			return nil, err
 		}
