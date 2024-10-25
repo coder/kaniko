@@ -275,6 +275,9 @@ func (s *fileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm
 func (s *fileCreatorCleaner) Clean() error {
 	for i := len(s.filesToClean) - 1; i >= 0; i-- {
 		if err := filesystem.FS.Remove(s.filesToClean[i]); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			return err
 		}
 	}
@@ -286,6 +289,9 @@ func (s *fileCreatorCleaner) Clean() error {
 			// that a third party has placed something in there since we created it.
 			// In that case, we should not remove it, because it no longer belongs exclusively to us.
 			if errors.As(err, &pathErr) && pathErr.Err == syscall.ENOTEMPTY {
+				continue
+			}
+			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 			return err
