@@ -332,7 +332,7 @@ func TestFileCreatorCleaner(t *testing.T) {
 		}
 
 		// Then the file should exist
-		if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
+		if _, err := filesystem.FS.Stat(file); errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected file to exist, but it did not")
 		}
 
@@ -346,7 +346,7 @@ func TestFileCreatorCleaner(t *testing.T) {
 		}
 
 		// And the file should have the correct permissions
-		info, err := os.Stat(file)
+		info, err := filesystem.FS.Stat(file)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -390,13 +390,13 @@ func TestFileCreatorCleaner(t *testing.T) {
 		}
 
 		// Then all the directories should be removed
-		if _, err := os.Stat(filepath.Join(dir, "a")); !errors.Is(err, os.ErrNotExist) {
+		if _, err := filesystem.FS.Stat(filepath.Join(dir, "a")); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected directory to be removed, but it was not")
 		}
 
 		// And the files should be removed
 		for _, file := range []string{file1, file2, file3} {
-			if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
+			if _, err := filesystem.FS.Stat(file); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("expected file to be removed, but it was not")
 			}
 		}
@@ -427,20 +427,20 @@ func TestFileCreatorCleaner(t *testing.T) {
 		}
 
 		// Then the file that was created by the fileCreatorCleaner should be removed
-		if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
+		if _, err := filesystem.FS.Stat(file); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected file to be removed, but it was not")
 		}
 
 		// And the now empty third directory should be removed
-		if _, err := os.Stat(filepath.Join(dir, "a", "b", "c")); !errors.Is(err, os.ErrNotExist) {
+		if _, err := filesystem.FS.Stat(filepath.Join(dir, "a", "b", "c")); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected directory to be removed, but it was not")
 		}
 
 		// And the third party file should not be removed, nor should the directories that contain it
-		if _, err := os.Stat(thirdPartyFile); errors.Is(err, os.ErrNotExist) {
+		if _, err := filesystem.FS.Stat(thirdPartyFile); errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected third party file to not be removed, but it was")
 		}
-		if _, err := os.Stat(filepath.Join(dir, "a", "b")); errors.Is(err, os.ErrNotExist) {
+		if _, err := filesystem.FS.Stat(filepath.Join(dir, "a", "b")); errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected directory to not be removed, but it was")
 		}
 	})

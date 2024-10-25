@@ -255,8 +255,8 @@ func (s *fileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm
 		// Traverse one level down
 		currentPath = filepath.Join(currentPath, nextDirDown)
 
-		if _, err := filesystem.Stat(currentPath); errors.Is(err, os.ErrNotExist) {
-			if err := filesystem.Mkdir(currentPath, dirPerm); err != nil {
+		if _, err := filesystem.FS.Stat(currentPath); errors.Is(err, os.ErrNotExist) {
+			if err := filesystem.FS.Mkdir(currentPath, dirPerm); err != nil {
 				return err
 			}
 			s.dirsToClean = append(s.dirsToClean, currentPath)
@@ -264,7 +264,7 @@ func (s *fileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm
 	}
 
 	// With all parent directories created, we can now create the actual secret file
-	if err := filesystem.WriteFile(path, []byte(data), 0600); err != nil {
+	if err := filesystem.FS.WriteFile(path, []byte(data), 0600); err != nil {
 		return errors.Wrap(err, "writing secret to file")
 	}
 	s.filesToClean = append(s.filesToClean, path)
@@ -274,13 +274,13 @@ func (s *fileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm
 
 func (s *fileCreatorCleaner) Clean() error {
 	for i := len(s.filesToClean) - 1; i >= 0; i-- {
-		if err := filesystem.Remove(s.filesToClean[i]); err != nil {
+		if err := filesystem.FS.Remove(s.filesToClean[i]); err != nil {
 			return err
 		}
 	}
 
 	for i := len(s.dirsToClean) - 1; i >= 0; i-- {
-		if err := filesystem.Remove(s.dirsToClean[i]); err != nil {
+		if err := filesystem.FS.Remove(s.dirsToClean[i]); err != nil {
 			pathErr := new(fs.PathError)
 			// If a path that we need to clean up is not empty, then that means
 			// that a third party has placed something in there since we created it.
