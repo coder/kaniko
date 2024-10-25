@@ -30,6 +30,7 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/pkg/errors"
 )
 
 func Test_addDefaultHOME(t *testing.T) {
@@ -309,6 +310,140 @@ func Test_CachingRunCommand_ExecuteCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFileCreatorCleaner(t *testing.T) {
+	const (
+		fileContent = "content"
+		fileMode    = 0600
+		dirMode     = 0700
+	)
+
+	t.Run("Creator", func(t *testing.T) {
+		dir := t.TempDir()
+		fcc := fileCreatorCleaner{}
+
+		// Given a fileCreatorCleaner
+		// When fileCreatorCleaner.MkdirAndWriteFile is called
+		file := filepath.Join(dir, "file")
+		err := fcc.MkdirAndWriteFile(file, []byte(fileContent), dirMode, fileMode)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Then the file should exist
+		if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected file to exist, but it did not")
+		}
+
+		// And the file should have the correct content
+		content, err := filesystem.ReadFile(file)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(content) != fileContent {
+			t.Fatalf("expected content to be '%s', but got '%s'", fileContent, content)
+		}
+
+		// And the file should have the correct permissions
+		info, err := os.Stat(file)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.Mode() != fileMode {
+			t.Fatalf("expected file to have mode %v, but got %v", fileMode, info.Mode())
+		}
+	})
+
+	t.Run("Cleaner", func(t *testing.T) {
+		dir := t.TempDir()
+		fcc := fileCreatorCleaner{}
+
+		// Given a fileCreatorCleaner has created a file three directories deep
+		file1 := filepath.Join(dir, "a", "b", "c", "file1")
+		err := fcc.MkdirAndWriteFile(file1, []byte(fileContent), dirMode, fileMode)
+		if err != nil {
+			t.Fatalf("creating file using fileCreatorCleaner: %v", err)
+		}
+
+		// And the same fileCreatorCleaner has created another file in the same directory
+		// This tests that we don't try to remove the same directory twice, which would cause an error
+		// on the second removal
+		file2 := filepath.Join(dir, "a", "b", "c", "file2")
+		err = fcc.MkdirAndWriteFile(file2, []byte(fileContent), dirMode, fileMode)
+		if err != nil {
+			t.Fatalf("creating file using2 fileCreatorCleaner: %v", err)
+		}
+
+		// And the same fileCreatorCleaner has created a file two directories deep into
+		// the same path
+		file3 := filepath.Join(dir, "a", "b", "file")
+		err = fcc.MkdirAndWriteFile(file3, []byte(fileContent), dirMode, fileMode)
+		if err != nil {
+			t.Fatalf("creating file using fileCreatorCleaner: %v", err)
+		}
+
+		// When fileCreatorCleaner.Clean is called
+		err = fcc.Clean()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Then all the directories should be removed
+		if _, err := os.Stat(filepath.Join(dir, "a")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected directory to be removed, but it was not")
+		}
+
+		// And the files should be removed
+		for _, file := range []string{file1, file2, file3} {
+			if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("expected file to be removed, but it was not")
+			}
+		}
+	})
+
+	t.Run("Directories with third party contents are not cleaned up", func(t *testing.T) {
+		dir := t.TempDir()
+		fcc := fileCreatorCleaner{}
+
+		// Given a fileCreatorCleaner has created a file three directories deep
+		file := filepath.Join(dir, "a", "b", "c", "file")
+		err := fcc.MkdirAndWriteFile(file, []byte(fileContent), dirMode, fileMode)
+		if err != nil {
+			t.Fatalf("creating file using fileCreatorCleaner: %v", err)
+		}
+
+		// And a third party file is created two levels deep
+		thirdPartyFile := filepath.Join(dir, "a", "b", "third-party-file")
+		err = filesystem.WriteFile(thirdPartyFile, []byte(fileContent), fileMode)
+		if err != nil {
+			t.Fatalf("creating third party file %v", err)
+		}
+
+		// When fileCreatorCleaner.Clean is called
+		err = fcc.Clean()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Then the file that was created by the fileCreatorCleaner should be removed
+		if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected file to be removed, but it was not")
+		}
+
+		// And the now empty third directory should be removed
+		if _, err := os.Stat(filepath.Join(dir, "a", "b", "c")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected directory to be removed, but it was not")
+		}
+
+		// And the third party file should not be removed, nor should the directories that contain it
+		if _, err := os.Stat(thirdPartyFile); errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected third party file to not be removed, but it was")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "a", "b")); errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected directory to not be removed, but it was")
+		}
+	})
 }
 
 func TestSetWorkDirIfExists(t *testing.T) {

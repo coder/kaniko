@@ -44,6 +44,9 @@ func MkdirTemp(dir, pattern string) (string, error)    { return os.MkdirTemp(dir
 
 func ReadFile(filename string) ([]byte, error)           { return FS.ReadFile(filename) }
 func ReadDir(name string) ([]iofs.DirEntry, error)       { return FS.ReadDir(name) }
+func Remove(name string) error                           { return FS.Remove(name) }
+func Mkdir(name string, perm iofs.FileMode) error        { return FS.Mkdir(name, perm) }
+func Stat(name string) (iofs.FileInfo, error)            { return FS.Stat(name) }
 func MkdirAll(path string, perm iofs.FileMode) error     { return vfs.MkdirAll(FS, path, perm) }
 func Walk(root string, walkFn filepath.WalkFunc) error   { return vfs.Walk(FS, root, walkFn) }
 func WalkDir(root string, walkFn iofs.WalkDirFunc) error { return iofs.WalkDir(FS, root, walkFn) }

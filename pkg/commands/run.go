@@ -19,6 +19,7 @@ package commands
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -152,7 +153,7 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		buildSecretsMap[secretName] = secretValue
 	}
 
-	secretFileManager := FileCreatorCleaner{}
+	secretFileManager := fileCreatorCleaner{}
 	defer func() {
 		cleanupErr := secretFileManager.Clean()
 		if err == nil {
@@ -233,26 +234,29 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	return nil
 }
 
-// FileCreatorCleaner keeps tracks of all files and directories that it created in the order that they were created.
+// fileCreatorCleaner keeps tracks of all files and directories that it created in the order that they were created.
 // Once asked to clean up, it will remove all files and directories in the reverse order that they were created.
-type FileCreatorCleaner struct {
+type fileCreatorCleaner struct {
 	filesToClean []string
 	dirsToClean  []string
 }
 
-func (s *FileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm, filePerm os.FileMode) error {
+func (s *fileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm, filePerm os.FileMode) error {
 	dirPath := filepath.Dir(path)
-	parentDirs := filepath.SplitList(dirPath)
+	parentDirs := strings.Split(dirPath, string(os.PathSeparator))
 
 	// Start at the root directory
 	currentPath := string(os.PathSeparator)
 
 	for _, nextDirDown := range parentDirs {
+		if nextDirDown == "" {
+			continue
+		}
 		// Traverse one level down
 		currentPath = filepath.Join(currentPath, nextDirDown)
 
-		if _, err := filesystem.FS.Stat(currentPath); os.IsNotExist(err) {
-			if err := os.Mkdir(currentPath, dirPerm); err != nil {
+		if _, err := filesystem.Stat(currentPath); errors.Is(err, os.ErrNotExist) {
+			if err := filesystem.Mkdir(currentPath, dirPerm); err != nil {
 				return err
 			}
 			s.dirsToClean = append(s.dirsToClean, currentPath)
@@ -260,7 +264,7 @@ func (s *FileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm
 	}
 
 	// With all parent directories created, we can now create the actual secret file
-	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+	if err := filesystem.WriteFile(path, []byte(data), 0600); err != nil {
 		return errors.Wrap(err, "writing secret to file")
 	}
 	s.filesToClean = append(s.filesToClean, path)
@@ -268,20 +272,20 @@ func (s *FileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm
 	return nil
 }
 
-func (s *FileCreatorCleaner) Clean() error {
+func (s *fileCreatorCleaner) Clean() error {
 	for i := len(s.filesToClean) - 1; i >= 0; i-- {
-		if err := os.Remove(s.filesToClean[i]); err != nil {
+		if err := filesystem.Remove(s.filesToClean[i]); err != nil {
 			return err
 		}
 	}
 
 	for i := len(s.dirsToClean) - 1; i >= 0; i-- {
-		if err := os.Remove(s.dirsToClean[i]); err != nil {
-			pathErr := os.PathError{}
+		if err := filesystem.Remove(s.dirsToClean[i]); err != nil {
+			pathErr := new(fs.PathError)
 			// If a path that we need to clean up is not empty, then that means
 			// that a third party has placed something in there since we created it.
 			// In that case, we should not remove it, because it no longer belongs exclusively to us.
-			if errors.As(err, &pathErr); pathErr.Err == syscall.ENOTEMPTY {
+			if errors.As(err, &pathErr) && pathErr.Err == syscall.ENOTEMPTY {
 				continue
 			}
 			return err
