@@ -19,8 +19,10 @@ package commands
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -42,10 +44,13 @@ type RunOutput struct {
 
 type RunCommand struct {
 	BaseCommand
-	cmd      *instructions.RunCommand
-	output   *RunOutput
-	shdCache bool
+	cmd          *instructions.RunCommand
+	output       *RunOutput
+	buildSecrets []string
+	shdCache     bool
 }
+
+const secretsDir = "/run/secrets"
 
 // for testing
 var (
@@ -57,10 +62,10 @@ func (r *RunCommand) IsArgsEnvsRequiredInCache() bool {
 }
 
 func (r *RunCommand) ExecuteCommand(config *v1.Config, buildArgs *dockerfile.BuildArgs) error {
-	return runCommandInExec(config, buildArgs, r.cmd, r.output)
+	return runCommandInExec(config, buildArgs, r.cmd, r.output, r.buildSecrets)
 }
 
-func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput) error {
+func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun *instructions.RunCommand, output *RunOutput, buildSecrets []string) (err error) {
 	if output == nil {
 		output = &RunOutput{}
 	}
@@ -131,6 +136,82 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 		return errors.Wrap(err, "adding default HOME variable")
 	}
 
+	cmdRun.Expand(func(word string) (string, error) {
+		// NOTE(SasSwart): This is a noop function. It's here to satisfy the buildkit parser.
+		// Without this, the buildkit parser won't parse --mount flags for RUN directives.
+		// Support for expansion in RUN directives deferred until its needed.
+		// https://docs.docker.com/build/building/variables/
+		return word, nil
+	})
+
+	buildSecretsMap := make(map[string]string)
+	for _, s := range buildSecrets {
+		secretName, secretValue, found := strings.Cut(s, "=")
+		if !found {
+			return fmt.Errorf("invalid secret %s", s)
+		}
+		buildSecretsMap[secretName] = secretValue
+	}
+
+	secretFileManager := fileCreatorCleaner{}
+	defer func() {
+		cleanupErr := secretFileManager.Clean()
+		if err == nil {
+			err = cleanupErr
+		}
+	}()
+
+	mounts := instructions.GetMounts(cmdRun)
+	for _, mount := range mounts {
+		switch mount.Type {
+		case instructions.MountTypeSecret:
+			// Implemented as per:
+			// https://docs.docker.com/reference/dockerfile/#run---mounttypesecret
+
+			envName := mount.CacheID
+			secret, secretSet := buildSecretsMap[envName]
+			if !secretSet && mount.Required {
+				return fmt.Errorf("required secret %s not found", mount.CacheID)
+			}
+
+			// If a target is specified, we write to the file specified by the target:
+			// If no target is specified and no env is specified, we write to /run/secrets/<id>
+			// If no target is specified and an env is specified, we set the env and don't write to file
+			if mount.Env == nil || mount.Target != "" {
+				targetFile := mount.Target
+				if targetFile == "" {
+					targetFile = filepath.Join(secretsDir, mount.CacheID)
+				}
+				if !filepath.IsAbs(targetFile) {
+					targetFile = filepath.Join(config.WorkingDir, targetFile)
+				}
+				secretFileManager.MkdirAndWriteFile(targetFile, []byte(secret), 0700, 0600)
+			}
+
+			// We don't return in the block above, because its possible to have both a target and an env.
+			// As such we need this guard clause or we risk getting a nil pointer below.
+			if mount.Env == nil {
+				continue
+			}
+
+			targetEnv := *mount.Env
+			if targetEnv == "" {
+				targetEnv = mount.CacheID
+			}
+
+			env = append(env, fmt.Sprintf("%s=%s", targetEnv, secret))
+		// NOTE(SasSwart):
+		// Buildkit v0.16.0 brought support for `RUN --mount` flags. Kaniko support for the mount
+		// types below is deferred until its needed.
+		// case instructions.MountTypeBind:
+		// case instructions.MountTypeTmpfs:
+		// case instructions.MountTypeCache:
+		// case instructions.MountTypeSSH
+		default:
+			logrus.Warnf("Mount type %s is not supported", mount.Type)
+		}
+	}
+
 	cmd.Env = env
 
 	logrus.Infof("Running: %s", cmd.Args)
@@ -150,6 +231,73 @@ func runCommandInExec(config *v1.Config, buildArgs *dockerfile.BuildArgs, cmdRun
 	if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil && err.Error() != "no such process" {
 		return err
 	}
+	return nil
+}
+
+// fileCreatorCleaner keeps tracks of all files and directories that it created in the order that they were created.
+// Once asked to clean up, it will remove all files and directories in the reverse order that they were created.
+type fileCreatorCleaner struct {
+	filesToClean []string
+	dirsToClean  []string
+}
+
+func (s *fileCreatorCleaner) MkdirAndWriteFile(path string, data []byte, dirPerm, filePerm os.FileMode) error {
+	dirPath := filepath.Dir(path)
+	parentDirs := strings.Split(dirPath, string(os.PathSeparator))
+
+	// Start at the root directory
+	currentPath := string(os.PathSeparator)
+
+	for _, nextDirDown := range parentDirs {
+		if nextDirDown == "" {
+			continue
+		}
+		// Traverse one level down
+		currentPath = filepath.Join(currentPath, nextDirDown)
+
+		if _, err := filesystem.FS.Stat(currentPath); errors.Is(err, os.ErrNotExist) {
+			if err := filesystem.FS.Mkdir(currentPath, dirPerm); err != nil {
+				return err
+			}
+			s.dirsToClean = append(s.dirsToClean, currentPath)
+		}
+	}
+
+	// With all parent directories created, we can now create the actual secret file
+	if err := filesystem.FS.WriteFile(path, []byte(data), 0600); err != nil {
+		return errors.Wrap(err, "writing secret to file")
+	}
+	s.filesToClean = append(s.filesToClean, path)
+
+	return nil
+}
+
+func (s *fileCreatorCleaner) Clean() error {
+	for i := len(s.filesToClean) - 1; i >= 0; i-- {
+		if err := filesystem.FS.Remove(s.filesToClean[i]); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return err
+		}
+	}
+
+	for i := len(s.dirsToClean) - 1; i >= 0; i-- {
+		if err := filesystem.FS.Remove(s.dirsToClean[i]); err != nil {
+			pathErr := new(fs.PathError)
+			// If a path that we need to clean up is not empty, then that means
+			// that a third party has placed something in there since we created it.
+			// In that case, we should not remove it, because it no longer belongs exclusively to us.
+			if errors.As(err, &pathErr) && pathErr.Err == syscall.ENOTEMPTY {
+				continue
+			}
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return err
+		}
+	}
+
 	return nil
 }
 

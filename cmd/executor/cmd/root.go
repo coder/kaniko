@@ -62,6 +62,7 @@ func init() {
 
 	addKanikoOptionsFlags()
 	addHiddenFlags(RootCmd)
+	opts.BuildSecrets = readBuildSecrets(os.Environ())
 	RootCmd.PersistentFlags().BoolVarP(&opts.IgnoreVarRun, "whitelist-var-run", "", true, "Ignore /var/run directory when taking image snapshot. Set it to false to preserve /var/run/ in destination image.")
 	RootCmd.PersistentFlags().MarkDeprecated("whitelist-var-run", "Please use ignore-var-run instead.")
 }
@@ -294,6 +295,19 @@ func addHiddenFlags(cmd *cobra.Command) {
 	pflag.CommandLine.MarkHidden("azure-container-registry-config")
 	// Hide this flag as we want to encourage people to use the --context flag instead
 	cmd.PersistentFlags().MarkHidden("bucket")
+}
+
+const buildSecretPrefix = "KANIKO_BUILD_SECRET_"
+
+func readBuildSecrets(environment []string) []string {
+	var buildSecrets []string
+	for _, secret := range environment {
+		if strings.HasPrefix(secret, buildSecretPrefix) {
+			buildSecrets = append(buildSecrets, strings.TrimPrefix(secret, buildSecretPrefix))
+		}
+	}
+
+	return buildSecrets
 }
 
 // checkKanikoDir will check whether the executor is operating in the default '/kaniko' directory,
