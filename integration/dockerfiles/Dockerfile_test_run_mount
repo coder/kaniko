@@ -19,6 +19,11 @@ RUN --mount=type=secret,id=FOO,env=FOO,required=true echo "$FOO" > /etc/foo
 RUN --mount=type=secret,id=BAR cat /run/secrets/BAR > /etc/bar
 # Make sure we set secrets to custom disk location the same way docker does
 RUN --mount=type=secret,id=BAZ,target=/baz.secret cat /baz.secret > /etc/baz
+# Make sure that specifying a duplicate mount doesn't interfere with mounting or cleanup
+RUN --mount=type=secret,id=FOO,target=/etc/foo.secret \
+    --mount=type=secret,id=FOO,target=/etc/foo.secret \
+    echo $FOO > /duplicate_foo_from_env && \
+    cat /etc/foo.secret > /duplicate_foo_from_custom_target
 # Make sure relative targets for secret mounts work:
 WORKDIR /etc
 RUN --mount=type=secret,id=QUX,target=qux.secret cat qux.secret > /etc/qux
