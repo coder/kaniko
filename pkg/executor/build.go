@@ -564,7 +564,11 @@ func (s *stageBuilder) takeSnapshot(files []string, shdDelete bool) (string, err
 	} else {
 		// Volumes are very weird. They get snapshotted in the next command.
 		files = append(files, util.Volumes()...)
-		snapshot, err = s.snapshotter.TakeSnapshot(files, shdDelete, s.opts.ForceBuildMetadata)
+		forceBuildMetadata := s.opts.ForceBuildMetadata
+		if s.opts.Cache && len(s.opts.Destinations) > 0 && !s.opts.NoPush {
+			forceBuildMetadata = true
+		}
+		snapshot, err = s.snapshotter.TakeSnapshot(files, shdDelete, forceBuildMetadata)
 	}
 	timing.DefaultRun.Stop(t)
 	return snapshot, err
