@@ -198,7 +198,7 @@ FROM golang:${version}
 		t.Fatal(err)
 	}
 
-	opts := &config.WarmerOptions{DockerfilePath: tmpfile.Name(), BuildArgs: []string{"version=1.20"}}
+	opts := &config.WarmerOptions{DockerfilePath: tmpfile.Name(), BuildArgs: []string{"version=1.24"}}
 	baseNames, err := ParseDockerfile(opts)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
