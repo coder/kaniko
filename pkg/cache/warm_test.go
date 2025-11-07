@@ -145,7 +145,7 @@ LABEL maintainer="alexezio"
 }
 
 func TestParseDockerfile_MultiStageDockerfile(t *testing.T) {
-	dockerfile := `FROM golang:1.20 as BUILDER
+	dockerfile := `FROM golang:1.24 as BUILDER
 LABEL maintainer="alexezio"
 
 FROM alpine:latest as RUNNER
@@ -172,8 +172,8 @@ LABEL maintainer="alexezio"
 	if len(baseNames) != 2 {
 		t.Fatalf("expected 2 base name, got %d", len(baseNames))
 	}
-	if baseNames[0] != "golang:1.20" {
-		t.Fatalf("expected 'golang:1.20', got '%s'", baseNames[0])
+	if baseNames[0] != "golang:1.24" {
+		t.Fatalf("expected 'golang:1.24', got '%s'", baseNames[0])
 	}
 
 	if baseNames[1] != "alpine:latest" {
@@ -198,7 +198,7 @@ FROM golang:${version}
 		t.Fatal(err)
 	}
 
-	opts := &config.WarmerOptions{DockerfilePath: tmpfile.Name(), BuildArgs: []string{"version=1.20"}}
+	opts := &config.WarmerOptions{DockerfilePath: tmpfile.Name(), BuildArgs: []string{"version=1.24"}}
 	baseNames, err := ParseDockerfile(opts)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -206,8 +206,8 @@ FROM golang:${version}
 	if len(baseNames) != 1 {
 		t.Fatalf("expected 1 base name, got %d", len(baseNames))
 	}
-	if baseNames[0] != "golang:1.20" {
-		t.Fatalf("expected 'golang:1.20', got '%s'", baseNames[0])
+	if baseNames[0] != "golang:1.24" {
+		t.Fatalf("expected 'golang:1.24', got '%s'", baseNames[0])
 	}
 }
 
