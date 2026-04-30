@@ -396,6 +396,10 @@ func UnTar(r io.Reader, dest string) ([]string, error) {
 
 func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader) error {
 	path := filepath.Join(dest, cleanedName)
+	cleanRoot := filepath.Clean(dest) + string(filepath.Separator)
+	if !strings.HasPrefix(filepath.Clean(path)+string(filepath.Separator), cleanRoot) {
+		return fmt.Errorf("path traversal detected in tar entry %q escapes root", hdr.Name)
+	}
 	base := filepath.Base(path)
 	dir := filepath.Dir(path)
 	mode := hdr.FileInfo().Mode()
@@ -499,6 +503,13 @@ func ExtractFile(dest string, hdr *tar.Header, cleanedName string, tr io.Reader)
 		if FilepathExists(path) {
 			if err := filesystem.FS.RemoveAll(path); err != nil {
 				return errors.Wrapf(err, "error removing %s to make way for new symlink", hdr.Name)
+			}
+		}
+		// Guard: absolute symlink targets must resolve within dest
+		if filepath.IsAbs(hdr.Linkname) {
+			cleanTarget := filepath.Clean(hdr.Linkname) + string(filepath.Separator)
+			if !strings.HasPrefix(cleanTarget, cleanRoot) {
+				return fmt.Errorf("path traversal detected in symlink target %q escapes root", hdr.Linkname)
 			}
 		}
 		if err := filesystem.FS.Symlink(hdr.Linkname, path); err != nil {
