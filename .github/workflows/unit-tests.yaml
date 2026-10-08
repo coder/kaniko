@@ -18,5 +18,7 @@ jobs:
           go-version: "1.25"
       - uses: actions/checkout@b0e28b5ac45a892f91e7d036f8200cf5ed489415 # v3
       # Some unit tests need to be run as root to function correctly as they
-      # may attempt to run `chown`.
-      - run: sudo make test
+      # may attempt to run `chown`. Keep PATH so root uses the Go installed
+      # above; the runner's default Go would download a toolchain that
+      # cannot find the covdata tool.
+      - run: sudo env "PATH=$PATH" make test
