@@ -14,8 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Ported from https://github.com/moby/moby/blob/v27.3.1/pkg/system/xattrs_linux.go
-// (Copyright 2013-2018 Docker, Inc., Apache License 2.0).
+// Ported with modifications from https://github.com/moby/moby/blob/v27.3.1/pkg/system/xattrs_linux.go
+// (Copyright 2013-2018 Docker, Inc., Apache License 2.0). Modifications: the
+// functions are unexported and errors are wrapped with fmt.Errorf instead of
+// the XattrError type, keeping the same message.
 
 package util
 

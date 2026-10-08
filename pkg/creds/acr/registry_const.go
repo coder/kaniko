@@ -1,8 +1,5 @@
-//go:build tools
-// +build tools
-
 /*
-Copyright 2018 Google LLC
+Copyright 2026 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package tools
+// Ported from https://github.com/chrismellard/docker-credential-acr-env/blob/82a0ddb27589/pkg/registry/const.go
+// (Copyright 2020 Chris Mellard, Apache License 2.0) so that kaniko does not
+// depend on github.com/chrismellard/docker-credential-acr-env (GO-2026-6225).
 
-// dependencies https://github.com/golang/go/issues/48332
-// These are placeholder imports the make go mod include these tools in its dependency graph.
+package acr
+
 import (
-	_ "github.com/GoogleCloudPlatform/docker-credential-gcr/v2"
-	_ "github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login"
+	"time"
+)
+
+const (
+	secureScheme   = "https://"
+	defaultTimeOut = time.Duration(30) * time.Second
 )

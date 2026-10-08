@@ -14,7 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package creds
+// The first group of cases is from
+// https://github.com/chrismellard/docker-credential-acr-env/blob/82a0ddb27589/pkg/credhelper/helper_test.go
+// (Copyright 2022 Chris Mellard, Apache License 2.0).
+
+package acr
 
 import "testing"
 
@@ -23,28 +27,46 @@ func TestIsACRRegistry(t *testing.T) {
 		url  string
 		want bool
 	}{
-		// Cases from the upstream helper's tests.
+		// Upstream cases.
 		{"myregistry.azurecr.io", true},
 		{"myregistry.azurecr.cn", true},
 		{"myregistry.azurecr.de", true},
 		{"myregistry.azurecr.us", true},
 		{"mcr.microsoft.com", true},
-		{"myregistry.azurecr.me", false},
+		{"myregistry.azurecr.me", false}, // not a known tld
 		{"notacr.xcr.example", false},
 		{"127.0.0.1:12345", false},
 		{"localhost:12345", false},
 		{"notaurl-)(*$@)(*@)(*", false},
-		// Forms that must keep working.
+		// Forms that keep working.
 		{"myregistry.azurecr.io:443", true},
+		{"myregistry.azurecr.io.", true},
+		{"mcr.microsoft.com.", true},
+		{"MyRegistry.azurecr.io", true},
+		{"my-registry.azurecr.io", true},
 		{"myregistry.westus.data.azurecr.io", true},
-		// GO-2026-6225: hosts that only contain an ACR domain.
+		{"myregistry.privatelink.azurecr.io", true},
+		{"user:pw@myregistry.azurecr.io", true},
+		// GO-2026-6225: hosts that contain an ACR domain without ending in one.
 		{"evil.azurecr.io.attacker.com", false},
 		{"myregistry.azurecr.io.attacker.com:443", false},
-		{"attacker.com/myregistry.azurecr.io", false},
-		{"myregistry.azurecr.io@attacker.com", false},
 		{"azurecr.io.attacker.com", false},
 		{"mcr.microsoft.com.attacker.com", false},
 		{"myregistry.azurecr.iox", false},
+		{"attacker.com/myregistry.azurecr.io", false},
+		{"myregistry.azurecr.io@attacker.com", false},
+		{"attacker.com#.azurecr.io", false},
+		{"attacker.com?.azurecr.io", false},
+		// Strings that are not DNS names.
+		{"azurecr.io", false},
+		{".azurecr.io", false},
+		{"a..azurecr.io", false},
+		{"-a.azurecr.io", false},
+		{"a-.azurecr.io", false},
+		{"attacker.com%25.azurecr.io", false},
+		{"[::ffff:127.0.0.1%25x.azurecr.io]", false},
+		{"[::ffff:127.0.0.1%25x.azurecr.io]:443", false},
+		{"MYREGISTRY.AZURECR.IO", false}, // upstream is case sensitive here too
 	} {
 		t.Run(c.url, func(t *testing.T) {
 			if got := isACRRegistry(c.url); got != c.want {
@@ -61,7 +83,7 @@ func TestACRCredHelperRejectsNonACRHost(t *testing.T) {
 	t.Setenv("AZURE_TENANT_ID", "tenant")
 	t.Setenv("AZURE_CLIENT_ID", "client")
 	t.Setenv("AZURE_CLIENT_SECRET", "secret")
-	user, pass, err := newACRCredentialsHelper().Get("evil.azurecr.io.attacker.com")
+	user, pass, err := NewACRCredentialsHelper().Get("evil.azurecr.io.attacker.com")
 	if err == nil || err.Error() != "serverURL does not refer to Azure Container Registry" || user != "" || pass != "" {
 		t.Fatalf("Get returned (%q, %q, %v), want the non-ACR host error and no credentials", user, pass, err)
 	}
