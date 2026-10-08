@@ -670,7 +670,7 @@ spec:
 #### Pushing to Azure Container Registry
 
 An ACR
-[credential helper](https://github.com/chrismellard/docker-credential-acr-env)
+[credential helper](https://github.com/osscontainertools/docker-credential-acr)
 is built into the kaniko executor image, which can be used to authenticate with
 well-known Azure environmental information.
 
@@ -688,7 +688,7 @@ is better to configure the credential tool only for your ACR registries by using
 `credHelpers` instead of `credsStore`:
 
 ```json
-{ "credHelpers": { "mycr.azurecr.io": "acr-env" } }
+{ "credHelpers": { "mycr.azurecr.io": "acr" } }
 ```
 
 You can mount in the new config as a configMap:

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.24 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /src
 
 # This arg is passed by docker buildx & contains the target CPU architecture (e.g., amd64, arm64, etc.)
@@ -47,7 +47,7 @@ RUN go install github.com/GoogleCloudPlatform/docker-credential-gcr/v2
 RUN go install github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login
 
 # Get ACR docker env credential helper
-RUN go install github.com/chrismellard/docker-credential-acr-env
+RUN go install github.com/osscontainertools/docker-credential-acr
 
 RUN \
   --mount=type=cache,target=/root/.cache/go-build \
@@ -77,7 +77,9 @@ FROM kaniko-base-slim AS kaniko-base
 
 COPY --from=builder --chown=0:0 /usr/local/bin/docker-credential-gcr /kaniko/docker-credential-gcr
 COPY --from=builder --chown=0:0 /usr/local/bin/docker-credential-ecr-login /kaniko/docker-credential-ecr-login
-COPY --from=builder --chown=0:0 /usr/local/bin/docker-credential-acr-env /kaniko/docker-credential-acr-env
+COPY --from=builder --chown=0:0 /usr/local/bin/docker-credential-acr /kaniko/docker-credential-acr
+# Keep the old helper name so existing credHelpers configs still work.
+COPY --from=builder --chown=0:0 /usr/local/bin/docker-credential-acr /kaniko/docker-credential-acr-env
 
 COPY --from=builder /kaniko/.docker /kaniko/.docker
 
