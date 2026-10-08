@@ -118,7 +118,7 @@ func parse(s string) ([]instructions.Stage, error) {
 	if err != nil {
 		return nil, err
 	}
-	stages, _, err := instructions.Parse(p.AST, &linter.Linter{})
+	stages, _, err := instructions.Parse(p.AST, linter.New(&linter.Config{}))
 	if err != nil {
 		return nil, err
 	}
