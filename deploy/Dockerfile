@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.24 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /src
 
 # This arg is passed by docker buildx & contains the target CPU architecture (e.g., amd64, arm64, etc.)
@@ -46,8 +46,9 @@ RUN go install github.com/GoogleCloudPlatform/docker-credential-gcr/v2
 # Get Amazon ECR credential helper
 RUN go install github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login
 
-# Get ACR docker env credential helper
-RUN go install github.com/chrismellard/docker-credential-acr-env
+# Build the ACR docker env credential helper from pkg/creds/acr, which fixes
+# GO-2026-6225 in github.com/chrismellard/docker-credential-acr-env.
+RUN go install ./cmd/docker-credential-acr-env
 
 RUN \
   --mount=type=cache,target=/root/.cache/go-build \
@@ -55,7 +56,7 @@ RUN \
   make out/executor out/warmer
 
 # Generate latest ca-certificates
-FROM debian:bullseye-slim AS certs
+FROM debian:bookworm-slim AS certs
 RUN apt update && apt install -y ca-certificates
 
 # use musl busybox since it's staticly compiled on all platforms

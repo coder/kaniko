@@ -1,8 +1,5 @@
-//go:build tools
-// +build tools
-
 /*
-Copyright 2018 Google LLC
+Copyright 2026 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package tools
+// Ported unchanged from https://github.com/moby/moby/blob/v27.3.1/builder/dockerfile/builder.go
+// (Copyright 2013-2018 Docker, Inc., Apache License 2.0).
 
-// dependencies https://github.com/golang/go/issues/48332
-// These are placeholder imports the make go mod include these tools in its dependency graph.
-import (
-	_ "github.com/GoogleCloudPlatform/docker-credential-gcr/v2"
-	_ "github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login"
-)
+package buildargs
+
+import "strings"
+
+// convertKVStringsToMap converts ["key=value"] to {"key":"value"}
+func convertKVStringsToMap(values []string) map[string]string {
+	result := make(map[string]string, len(values))
+	for _, value := range values {
+		k, v, _ := strings.Cut(value, "=")
+		result[k] = v
+	}
+
+	return result
+}

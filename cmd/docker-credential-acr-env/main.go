@@ -1,8 +1,5 @@
-//go:build tools
-// +build tools
-
 /*
-Copyright 2018 Google LLC
+Copyright 2026 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package tools
+// Command docker-credential-acr-env is a Docker credential helper for Azure
+// Container Registry. It replaces github.com/chrismellard/docker-credential-acr-env
+// in the kaniko images; see pkg/creds/acr.
+package main
 
-// dependencies https://github.com/golang/go/issues/48332
-// These are placeholder imports the make go mod include these tools in its dependency graph.
 import (
-	_ "github.com/GoogleCloudPlatform/docker-credential-gcr/v2"
-	_ "github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login"
+	"github.com/GoogleContainerTools/kaniko/pkg/creds/acr"
+	"github.com/docker/docker-credential-helpers/credentials"
 )
+
+func main() {
+	credentials.Serve(acr.NewACRCredentialsHelper())
+}

@@ -34,9 +34,9 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/config"
 	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/timing"
-	"github.com/docker/docker/pkg/archive"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/buildkit/frontend/dockerfile/dockerignore"
+	"github.com/moby/go-archive"
 	"github.com/moby/patternmatcher"
 	otiai10Cpy "github.com/otiai10/copy"
 	"github.com/pkg/errors"
@@ -228,76 +228,91 @@ func GetFSFromLayers(root string, layers []v1.Layer, opts ...FSOpt) ([]string, e
 			logrus.Infof("Extracting layer %d/%d (%.1f%%)", i+1, len(layers), progressPerc)
 		}
 
-		r, err := l.Uncompressed()
+		files, err := extractLayer(root, l, cfg, i, len(layers), progressPerc, printExtractionProgress)
 		if err != nil {
 			return nil, err
 		}
-		defer r.Close()
-
-		if printExtractionProgress {
-			r = &printAfterReader{
-				ReadCloser: r,
-				after:      time.Second,
-				print: func(n int) {
-					logrus.Infof("Extracting layer %d/%d (%.1f%%) %s", i+1, len(layers), progressPerc, strings.Repeat(".", n))
-				},
-			}
-		}
-
-		tr := tar.NewReader(r)
-		for {
-			hdr, err := tr.Next()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("error reading tar %d", i))
-			}
-
-			cleanedName := filepath.Clean(hdr.Name)
-			path := filepath.Join(root, cleanedName)
-			base := filepath.Base(path)
-			dir := filepath.Dir(path)
-
-			if strings.HasPrefix(base, archive.WhiteoutPrefix) {
-				logrus.Tracef("Whiting out %s", path)
-
-				name := strings.TrimPrefix(base, archive.WhiteoutPrefix)
-				path := filepath.Join(dir, name)
-
-				if CheckCleanedPathAgainstIgnoreList(path) {
-					logrus.Tracef("Not deleting %s, as it's ignored", path)
-					continue
-				}
-				if childDirInIgnoreList(path) {
-					logrus.Tracef("Not deleting %s, as it contains a ignored path", path)
-					continue
-				}
-
-				if err := filesystem.FS.RemoveAll(path); err != nil {
-					return nil, errors.Wrapf(err, "removing whiteout %s", hdr.Name)
-				}
-
-				if !cfg.includeWhiteout {
-					logrus.Trace("Not including whiteout files")
-					continue
-				}
-
-			}
-
-			if err := cfg.extractFunc(root, hdr, cleanedName, tr); err != nil {
-				return nil, err
-			}
-
-			extractedFiles = append(extractedFiles, filepath.Join(root, cleanedName))
-		}
+		extractedFiles = append(extractedFiles, files...)
 
 		extractedBytes += layerSizes[i]
 	}
 
 	if printExtractionProgress {
 		logrus.Infof("Extraction complete")
+	}
+
+	return extractedFiles, nil
+}
+
+// extractLayer extracts a single layer into root and returns the extracted
+// file paths. The layer reader is closed before returning.
+func extractLayer(root string, l v1.Layer, cfg *FSConfig, i, numLayers int, progressPerc float64, printExtractionProgress bool) ([]string, error) {
+	extractedFiles := []string{}
+	r, err := l.Uncompressed()
+	if err != nil {
+		return nil, err
+	}
+	// Close before returning so the next layer can be fetched. Remote
+	// layers hold a go-containerregistry pull limiter slot until closed.
+	defer r.Close()
+
+	if printExtractionProgress {
+		r = &printAfterReader{
+			ReadCloser: r,
+			after:      time.Second,
+			print: func(n int) {
+				logrus.Infof("Extracting layer %d/%d (%.1f%%) %s", i+1, numLayers, progressPerc, strings.Repeat(".", n))
+			},
+		}
+	}
+
+	tr := tar.NewReader(r)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("error reading tar %d", i))
+		}
+
+		cleanedName := filepath.Clean(hdr.Name)
+		path := filepath.Join(root, cleanedName)
+		base := filepath.Base(path)
+		dir := filepath.Dir(path)
+
+		if strings.HasPrefix(base, archive.WhiteoutPrefix) {
+			logrus.Tracef("Whiting out %s", path)
+
+			name := strings.TrimPrefix(base, archive.WhiteoutPrefix)
+			path := filepath.Join(dir, name)
+
+			if CheckCleanedPathAgainstIgnoreList(path) {
+				logrus.Tracef("Not deleting %s, as it's ignored", path)
+				continue
+			}
+			if childDirInIgnoreList(path) {
+				logrus.Tracef("Not deleting %s, as it contains a ignored path", path)
+				continue
+			}
+
+			if err := filesystem.FS.RemoveAll(path); err != nil {
+				return nil, errors.Wrapf(err, "removing whiteout %s", hdr.Name)
+			}
+
+			if !cfg.includeWhiteout {
+				logrus.Trace("Not including whiteout files")
+				continue
+			}
+
+		}
+
+		if err := cfg.extractFunc(root, hdr, cleanedName, tr); err != nil {
+			return nil, err
+		}
+
+		extractedFiles = append(extractedFiles, filepath.Join(root, cleanedName))
 	}
 
 	return extractedFiles, nil

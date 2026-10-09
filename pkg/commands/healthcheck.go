@@ -18,12 +18,12 @@ package commands
 
 import (
 	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
-	"github.com/docker/docker/api/types/container"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
+	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
 )
 
-func convertDockerHealthConfigToContainerRegistryFormat(dockerHealthcheck container.HealthConfig) v1.HealthConfig {
+func convertDockerHealthConfigToContainerRegistryFormat(dockerHealthcheck dockerspec.HealthcheckConfig) v1.HealthConfig {
 	return v1.HealthConfig{
 		Test:        dockerHealthcheck.Test,
 		Interval:    dockerHealthcheck.Interval,
