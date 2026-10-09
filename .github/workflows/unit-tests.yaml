@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v4.01
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - uses: actions/checkout@b0e28b5ac45a892f91e7d036f8200cf5ed489415 # v3
       # Some unit tests need to be run as root to function correctly as they
       # may attempt to run `chown`. Keep PATH so root uses the Go installed

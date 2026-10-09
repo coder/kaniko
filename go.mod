@@ -1,6 +1,6 @@
 module github.com/GoogleContainerTools/kaniko
 
-go 1.25.9
+go 1.26.9
 
 require (
 	cloud.google.com/go/storage v1.40.0
