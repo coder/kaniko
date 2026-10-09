@@ -34,7 +34,9 @@ func GetServicePrincipalTokenFromEnvironment() (*adal.ServicePrincipalToken, aut
 		return &adal.ServicePrincipalToken{}, auth.EnvironmentSettings{}, fmt.Errorf("failed to get auth settings from environment - %w", err)
 	}
 
-	spToken, err := getServicePrincipalToken(settings, settings.Environment.ResourceManagerEndpoint)
+	// Ask for a token scoped to the registry service, not the Azure Resource
+	// Manager audience. One value for every Azure cloud.
+	spToken, err := getServicePrincipalToken(settings, "https://containerregistry.azure.net")
 	if err != nil {
 		return &adal.ServicePrincipalToken{}, auth.EnvironmentSettings{}, fmt.Errorf("failed to initialise sp token config %w", err)
 	}
