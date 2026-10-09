@@ -57,7 +57,7 @@ func getServicePrincipalToken(settings auth.EnvironmentSettings, resource string
 		if err != nil {
 			return &adal.ServicePrincipalToken{}, fmt.Errorf("failed to initialise OAuthConfig - %w", err)
 		}
-		return adal.NewServicePrincipalToken(*oAuthConfig, clientCredentialsConfig.ClientID, clientCredentialsConfig.ClientSecret, clientCredentialsConfig.Resource)
+		return adal.NewServicePrincipalToken(*oAuthConfig, clientCredentialsConfig.ClientID, clientCredentialsConfig.ClientSecret, resource)
 	}
 
 	//2. Client Certificate
