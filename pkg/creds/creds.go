@@ -19,8 +19,8 @@ package creds
 import (
 	"io"
 
+	"github.com/GoogleContainerTools/kaniko/pkg/creds/acr"
 	ecr "github.com/awslabs/amazon-ecr-credential-helper/ecr-login"
-	"github.com/chrismellard/docker-credential-acr-env/pkg/credhelper"
 	gitlab "github.com/ePirat/docker-credential-gitlabci/pkg/credhelper"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/v1/google"
@@ -32,7 +32,7 @@ func GetKeychain() authn.Keychain {
 		authn.DefaultKeychain,
 		google.Keychain,
 		authn.NewKeychainFromHelper(ecr.NewECRHelper(ecr.WithLogger(io.Discard))),
-		authn.NewKeychainFromHelper(credhelper.NewACRCredentialsHelper()),
+		authn.NewKeychainFromHelper(acr.NewACRCredentialsHelper()),
 		authn.NewKeychainFromHelper(gitlab.NewGitLabCredentialsHelper()),
 	)
 }

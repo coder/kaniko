@@ -95,7 +95,7 @@ func Parse(b []byte) ([]instructions.Stage, []instructions.ArgCommand, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	stages, metaArgs, err := instructions.Parse(p.AST, &linter.Linter{})
+	stages, metaArgs, err := instructions.Parse(p.AST, newLinter())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -219,13 +219,26 @@ func ParseCommands(cmdArray []string) ([]instructions.Command, error) {
 		return nil, err
 	}
 	for _, child := range ast.AST.Children {
-		cmd, err := instructions.ParseCommand(child)
+		// instructions.ParseCommand uses a nil linter, which panics on
+		// "# check=" comments, so parse with an initialized linter instead.
+		inst, err := instructions.ParseInstructionWithLinter(child, newLinter())
 		if err != nil {
 			return nil, err
+		}
+		cmd, ok := inst.(instructions.Command)
+		if !ok {
+			return nil, parser.WithLocation(fmt.Errorf("%T is not a command type", inst), child.Location())
 		}
 		cmds = append(cmds, cmd)
 	}
 	return cmds, nil
+}
+
+// newLinter returns a linter that reports nothing. buildkit applies
+// "# check=" comments to the linter while parsing, which panics on a nil or
+// zero-value linter.
+func newLinter() *linter.Linter {
+	return linter.New(&linter.Config{})
 }
 
 // SaveStage returns true if the current stage will be needed later in the Dockerfile

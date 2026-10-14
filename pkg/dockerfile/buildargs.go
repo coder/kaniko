@@ -19,7 +19,7 @@ package dockerfile
 import (
 	"strings"
 
-	d "github.com/docker/docker/builder/dockerfile"
+	d "github.com/GoogleContainerTools/kaniko/pkg/dockerfile/internal/buildargs"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 )
 

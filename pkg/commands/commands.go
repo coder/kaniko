@@ -17,6 +17,8 @@ limitations under the License.
 package commands
 
 import (
+	"slices"
+
 	"github.com/GoogleContainerTools/kaniko/pkg/dockerfile"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -65,6 +67,9 @@ type DockerCommand interface {
 }
 
 func GetCommand(cmd instructions.Command, fileContext util.FileContext, useNewRun bool, cacheCopy bool, cacheRun bool, output *RunOutput, buildSecrets []string) (DockerCommand, error) {
+	if err := checkUnsupportedFlags(cmd); err != nil {
+		return nil, err
+	}
 	switch c := cmd.(type) {
 	case *instructions.RunCommand:
 		if useNewRun {
@@ -106,4 +111,38 @@ func GetCommand(cmd instructions.Command, fileContext util.FileContext, useNewRu
 		return nil, nil
 	}
 	return nil, errors.Errorf("%s is not a supported command", cmd.Name())
+}
+
+// checkUnsupportedFlags rejects instruction flags that kaniko does not
+// implement. buildkit v0.16 failed to parse these flags; newer buildkit
+// accepts them, so ignoring them would silently build a different image (for
+// example, COPY --exclude would copy the excluded files).
+func checkUnsupportedFlags(cmd instructions.Command) error {
+	switch c := cmd.(type) {
+	case *instructions.CopyCommand:
+		if len(c.ExcludePatterns) > 0 {
+			return errors.Errorf("%s --exclude is not supported by kaniko", c.Name())
+		}
+		if c.Parents {
+			return errors.Errorf("%s --parents is not supported by kaniko", c.Name())
+		}
+	case *instructions.AddCommand:
+		if len(c.ExcludePatterns) > 0 {
+			return errors.Errorf("%s --exclude is not supported by kaniko", c.Name())
+		}
+		if c.Unpack != nil {
+			return errors.Errorf("%s --unpack is not supported by kaniko", c.Name())
+		}
+	case *instructions.RunCommand:
+		// FlagsUsed holds the flags written in the Dockerfile. Checking it first
+		// also avoids reading parser state that RunCommand values constructed
+		// outside the parser do not have.
+		if slices.Contains(c.FlagsUsed, "security") && instructions.GetSecurity(c) == instructions.SecurityInsecure {
+			return errors.Errorf("%s --security=insecure is not supported by kaniko", c.Name())
+		}
+		if slices.Contains(c.FlagsUsed, "device") {
+			return errors.Errorf("%s --device is not supported by kaniko", c.Name())
+		}
+	}
+	return nil
 }

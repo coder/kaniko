@@ -1,4 +1,4 @@
-FROM debian:bullseye-20220328
+FROM debian:bookworm
 
 RUN set -x; \
     apt-get update && \

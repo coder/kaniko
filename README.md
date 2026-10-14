@@ -669,10 +669,10 @@ spec:
 
 #### Pushing to Azure Container Registry
 
-An ACR
-[credential helper](https://github.com/chrismellard/docker-credential-acr-env)
-is built into the kaniko executor image, which can be used to authenticate with
-well-known Azure environmental information.
+An ACR credential helper, `docker-credential-acr-env`, is built into the kaniko
+executor image from `cmd/docker-credential-acr-env`. It is based on
+[docker-credential-acr-env](https://github.com/chrismellard/docker-credential-acr-env)
+and can be used to authenticate with well-known Azure environmental information.
 
 To configure credentials, you will need to do the following:
 

@@ -192,6 +192,47 @@ func Test_stripEnclosingQuotes(t *testing.T) {
 	}
 }
 
+func Test_Parse_LintCheckComments(t *testing.T) {
+	// buildkit merges "# check=" comments into the linter config for the
+	// instruction that follows them, which panics with an uninitialized linter.
+	for name, dockerfile := range map[string]string{
+		"check before instruction":   "FROM alpine\n# check=skip=JSONArgsRecommended\nRUN echo hi\n",
+		"check after header comment": "# header\n# check=experimental=all\nFROM alpine\nRUN echo hi\n",
+		"check error directive":      "FROM alpine\n# check=error=true\nRUN echo hi\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			stages, _, err := Parse([]byte(dockerfile))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(stages) != 1 || len(stages[0].Commands) != 1 {
+				t.Fatalf("got %d stages, want 1 stage with 1 command", len(stages))
+			}
+		})
+	}
+}
+
+func Test_ParseCommands_LintCheckComments(t *testing.T) {
+	// A leading plain comment ends header directive parsing, so the check=
+	// comment reaches the instruction's linter.
+	cmds, err := ParseCommands([]string{"# trigger", "# check=skip=JSONArgsRecommended", "RUN echo hi"})
+	if err != nil {
+		t.Fatalf("ParseCommands: %v", err)
+	}
+	if len(cmds) != 1 {
+		t.Fatalf("got %d commands, want 1", len(cmds))
+	}
+	if _, ok := cmds[0].(*instructions.RunCommand); !ok {
+		t.Fatalf("got %T, want *instructions.RunCommand", cmds[0])
+	}
+}
+
+func Test_ParseCommands_RejectsStage(t *testing.T) {
+	if _, err := ParseCommands([]string{"FROM alpine"}); err == nil {
+		t.Fatal("ParseCommands accepted FROM, want an error")
+	}
+}
+
 func Test_GetOnBuildInstructions(t *testing.T) {
 	type testCase struct {
 		name        string

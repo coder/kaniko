@@ -22,6 +22,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -36,7 +39,11 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/mocks/go-containerregistry/mockv1"
 	"github.com/GoogleContainerTools/kaniko/testutil"
 	"github.com/golang/mock/gomock"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/random"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 )
 
@@ -1437,6 +1444,67 @@ func Test_GetFSFromLayers(t *testing.T) {
 		err,
 		expectErr,
 	)
+}
+
+// Test_GetFSFromLayers_RemoteLayersExceedPullLimit ensures each remote layer
+// reader is closed before the next layer is fetched. go-containerregistry
+// holds a pull limiter slot per open blob reader, so keeping readers open
+// until the function returns blocks forever once the layer count exceeds the
+// limit.
+func Test_GetFSFromLayers_RemoteLayersExceedPullLimit(t *testing.T) {
+	resetMountInfoFile := provideEmptyMountinfoFile()
+	defer resetMountInfoFile()
+
+	s := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	defer s.Close()
+	u, err := url.Parse(s.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := name.ParseReference(u.Host + "/kaniko/layers:latest")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const numLayers = 6
+	img, err := random.Image(64, numLayers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(ref, img); err != nil {
+		t.Fatal(err)
+	}
+
+	pulled, err := remote.Image(ref, remote.WithJobs(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	layers, err := pulled.Layers()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		files []string
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		files, err := GetFSFromLayers(t.TempDir(), layers, ExtractFunc(fakeExtract))
+		done <- result{files: files, err: err}
+	}()
+
+	select {
+	case res := <-done:
+		if res.err != nil {
+			t.Fatal(res.err)
+		}
+		if len(res.files) != numLayers {
+			t.Fatalf("expected %d extracted files, got %d", numLayers, len(res.files))
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("timed out extracting layers; layer readers are likely not closed")
+	}
 }
 
 func assertGetFSFromLayers(
