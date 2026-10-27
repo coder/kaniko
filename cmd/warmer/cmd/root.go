@@ -28,7 +28,7 @@ import (
 	"github.com/GoogleContainerTools/kaniko/pkg/filesystem"
 	"github.com/GoogleContainerTools/kaniko/pkg/logging"
 	"github.com/GoogleContainerTools/kaniko/pkg/util"
-	"github.com/containerd/containerd/platforms"
+	"github.com/containerd/platforms"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
